@@ -126,19 +126,6 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Known gaps (deferred to v0.1.1)
 
-- **§3.15 agent_jobs table has no consumer** — the
-  `sync_account_tier_to_keys` trigger enqueues
-  `cache_invalidate_keys` job rows into `agent_jobs` whenever an
-  account's tier changes (e.g. plan upgrade/downgrade). The lib
-  doesn't ship a worker that processes those rows; they
-  accumulate. Practical effect: tier changes propagate to caches
-  only via TTL (RT-3's bounded 30 s) rather than via explicit
-  invalidation. Acceptable per RT-3 stale-auth budget; SaaS apps
-  that want immediate propagation can call
-  `invalidateAccountKeys(pg, redis, account_id)` directly after
-  a tier UPDATE. Tracking as deferred — either ship a generic
-  `agent_jobs` worker or drop the trigger's enqueue.
-
 - **§2.9 owner_approval doesn't actually gate /callback** —
   `emitOwnerApprovalRequest` (called from /recover-account) writes
   the agent_recovery_approvals row with decision='pending' and
@@ -202,10 +189,10 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Test summary at HEAD
 
-- **Unit tests**: 333 passing across 45 suites, ~930 ms wall (includes
+- **Unit tests**: 339 passing across 46 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
-- **Integration**: 87 passing against real Postgres 16 + Redis 7
+- **Integration**: 89 passing against real Postgres 16 + Redis 7
   (testcontainers, ~80 s — healthz unhealthy-path waits ioredis retries):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
     fallback, invalid_secret rejection.
@@ -578,3 +565,16 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
      a runtime whitelist check at constructor time. Unit
      regression covers all four allowed roles + a malicious
      value (rejection assertion).
+  28. **§3.15 agent_jobs missing worker** — the
+     `sync_account_tier_to_keys` trigger enqueued
+     `cache_invalidate_keys` rows into `agent_jobs` but no code
+     consumed them; rows accumulated and tier-change cache
+     invalidation relied entirely on TTL. Implemented
+     `processAgentJobs` (`src/jobs/process-agent-jobs.ts`):
+     SELECT FOR UPDATE SKIP LOCKED claim, dispatch by `kind`,
+     mark completed/failed/dead based on attempt count, alert
+     on dead-letter and unknown kinds. Built-in handler for
+     `cache_invalidate_keys`; SaaSes can register custom kinds
+     via `extra_handlers`. 6 unit tests + 2 integration tests
+     (against real Postgres) cover happy path, retry,
+     dead-letter, unknown kind, and SKIP LOCKED concurrency.

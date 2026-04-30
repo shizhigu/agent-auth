@@ -138,3 +138,11 @@ export { flushAuditOutbox } from './jobs/outbox-flusher.js';
 export { reconcileAccountKeySets } from './jobs/reconcile-redis-sets.js';
 export { manageAuditPartitions } from './jobs/audit-partition-manager.js';
 export { expireRotationGrace } from './jobs/rotation-grace-expirer.js';
+export { processAgentJobs } from './jobs/process-agent-jobs.js';
+export type {
+  AgentJobKind,
+  AgentJobRow,
+  ProcessAgentJobsDeps,
+  ProcessAgentJobsResult,
+  JobHandler,
+} from './jobs/process-agent-jobs.js';
