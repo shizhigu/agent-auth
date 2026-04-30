@@ -330,6 +330,143 @@ export const rbAuditTail = (): AdminCommandHandler => ({
 });
 
 // ---------------------------------------------------------------------------
+// Read-only: list-accounts (SPEC §8.2). Cursored by id; default limit 50,
+// hard-capped at 1000 to prevent DoS.
+// ---------------------------------------------------------------------------
+
+export const rbListAccounts = (): AdminCommandHandler => ({
+  async run(input, deps) {
+    const opts = (input.options ?? {}) as {
+      after_id?: string;
+      status?: string;
+      limit?: number;
+    };
+    const limit = Math.max(1, Math.min(1000, opts.limit ?? 50));
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (opts.after_id) {
+      params.push(opts.after_id);
+      where.push(`id::text > $${params.length}`);
+    }
+    if (opts.status) {
+      params.push(opts.status);
+      where.push(`status = $${params.length}::account_status_enum`);
+    }
+    params.push(limit);
+    const rows = await deps.postgres.query(
+      `SELECT id::text AS id, display_handle, tier::text AS tier,
+              status::text AS status, created_at, suspended_at, closed_at
+         FROM agent_accounts
+         ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}
+        ORDER BY id ASC
+        LIMIT $${params.length}`,
+      params,
+    );
+    return { rows: rows.rows, count: rows.rows.length };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Read-only: show-account. Returns the account row + count of keys + count
+// of identities. Operator-friendly summary for triage.
+// ---------------------------------------------------------------------------
+
+export const rbShowAccount = (): AdminCommandHandler => ({
+  async run(input, deps) {
+    const opts = (input.options ?? {}) as { account_id?: string };
+    if (!opts.account_id) {
+      throw new Error('show-account: options.account_id required');
+    }
+    const row = await deps.postgres.queryOne(
+      `SELECT
+         a.id::text AS id, a.display_handle, a.tier::text AS tier,
+         a.status::text AS status, a.created_at, a.suspended_at, a.closed_at,
+         (SELECT count(*) FROM agent_identities WHERE account_id = a.id)::int AS identity_count,
+         (SELECT count(*) FROM agent_api_keys
+            WHERE account_id = a.id AND rotation_state <> 'revoked')::int AS active_key_count,
+         (SELECT count(*) FROM agent_api_keys
+            WHERE account_id = a.id AND rotation_state = 'revoked')::int AS revoked_key_count
+       FROM agent_accounts a
+       WHERE a.id = $1::uuid`,
+      [opts.account_id],
+    );
+    return row ? { account: row } : { account: null };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Read-only: list-keys (admin variant — across accounts). The agent-facing
+// /api/agent-auth/keys is in src/routes/list-keys.ts; this is the admin CLI
+// equivalent that includes revoked rows for forensics.
+// ---------------------------------------------------------------------------
+
+export const rbListKeys = (): AdminCommandHandler => ({
+  async run(input, deps) {
+    const opts = (input.options ?? {}) as {
+      account_id?: string;
+      rotation_state?: string;
+      limit?: number;
+    };
+    const limit = Math.max(1, Math.min(1000, opts.limit ?? 100));
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (opts.account_id) {
+      params.push(opts.account_id);
+      where.push(`account_id = $${params.length}::uuid`);
+    }
+    if (opts.rotation_state) {
+      params.push(opts.rotation_state);
+      where.push(`rotation_state = $${params.length}::rotation_state_enum`);
+    }
+    params.push(limit);
+    const rows = await deps.postgres.query(
+      `SELECT key_id, account_id::text AS account_id, prefix, label, scopes,
+              tier::text AS tier, rotation_state::text AS rotation_state,
+              created_at, last_used_at, expires_at,
+              revoked_at, revoked_reason
+         FROM agent_api_keys
+         ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}
+        ORDER BY created_at DESC
+        LIMIT $${params.length}`,
+      params,
+    );
+    return { rows: rows.rows, count: rows.rows.length };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Read-only: show-key. Single-row detail by key_id, including the issuing
+// identity row joined in for forensics.
+// ---------------------------------------------------------------------------
+
+export const rbShowKey = (): AdminCommandHandler => ({
+  async run(input, deps) {
+    const opts = (input.options ?? {}) as { key_id?: string };
+    if (!opts.key_id) {
+      throw new Error('show-key: options.key_id required');
+    }
+    const row = await deps.postgres.queryOne(
+      `SELECT
+         k.key_id, k.account_id::text AS account_id, k.prefix, k.label,
+         k.scopes, k.tier::text AS tier,
+         k.rotation_state::text AS rotation_state,
+         k.created_at, k.last_used_at, k.expires_at,
+         k.rotated_at, k.rotation_grace_expires_at,
+         k.revoked_at, k.revoked_reason, k.last_revoke_lsn::text AS last_revoke_lsn,
+         i.id::text AS identity_id, i.provider AS identity_provider,
+         i.subject AS identity_subject, i.audience AS identity_audience,
+         i.assurance_level::text AS identity_assurance_level,
+         i.status::text AS identity_status, i.revocation_source AS identity_revocation_source
+       FROM agent_api_keys k
+       LEFT JOIN agent_identities i ON i.id = k.issued_via_identity_id
+       WHERE k.key_id = $1`,
+      [opts.key_id],
+    );
+    return row ? { key: row } : { key: null };
+  },
+});
+
+// ---------------------------------------------------------------------------
 // Convenience: build the default handler map for AdminDispatchDeps.handlers.
 // ---------------------------------------------------------------------------
 
@@ -345,6 +482,10 @@ export function defaultRunbookHandlers(deps: {
     'reconcile-redis-sets': rbReconcileRedisSets({ redis: deps.redis }),
     'resolve-idempotency': rbResolveIdempotency(),
     'audit-tail': rbAuditTail(),
+    'list-accounts': rbListAccounts(),
+    'show-account': rbShowAccount(),
+    'list-keys': rbListKeys(),
+    'show-key': rbShowKey(),
   };
 }
 
