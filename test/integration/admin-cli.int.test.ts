@@ -147,6 +147,79 @@ describe('integration: admin CLI runbooks (SPEC §8.1 / §8.2)', () => {
       [key_id],
     );
     expect(log?.kind).toBe('key_revoke');
+
+    // SPEC §6.4 — Tier B mutation MUST emit an audit row in the same
+    // transaction as the state change. The CLI dispatcher writes an
+    // 'admin_revoke-key' intent row before the handler runs; the handler
+    // ALSO writes an 'admin_revoke_committed' row inside the Tier B
+    // transaction. Both must be present after the runbook completes.
+    // RT-39: an attacker who suppresses one cannot suppress the other.
+    const commitRow = await admin.queryOne<{ key_id: string; account_id: string }>(
+      `SELECT key_id, account_id::text AS account_id FROM agent_audit_log
+        WHERE event_type = 'admin_revoke_committed' AND key_id = $1
+        ORDER BY id DESC LIMIT 1`,
+      [key_id],
+    );
+    expect(commitRow).not.toBeNull();
+    expect(commitRow?.key_id).toBe(key_id);
+  });
+
+  it('RB-2 suspend-account: in-tx audit row records the commit (SPEC §6.4)', async () => {
+    const { account_id, key_id } = await seedKey('rb2');
+    const jit = new JitRbac();
+    const grant = jit.grant({
+      admin_id: 'admin@saas',
+      role: 'agent_auth_admin',
+      reason: 'integration_rb2',
+    });
+
+    await runAdminCommand(
+      {
+        command: 'suspend-account',
+        admin_id: 'admin@saas',
+        jit_grant_id: grant.grant_id,
+        reason: 'integration_rb2',
+        webauthn_assertion: {
+          challenge: 'c',
+          origin: 'https://admin.saas',
+          response_b64: 'r',
+          credential_id: 'cred-1',
+        },
+        options: { account_id },
+      },
+      {
+        postgres: fix.postgres,
+        jit_rbac: jit,
+        webauthn: noopWebAuthnVerifier,
+        internal_secret: SECRET,
+        audit: { postgres: fix.postgres },
+        handlers: defaultRunbookHandlers({ redis: fix.redis, region: 'us-east-1' }),
+      },
+    );
+
+    // Account suspended.
+    const acc = await admin.queryOne<{ status: string }>(
+      `SELECT status FROM agent_accounts WHERE id = $1`,
+      [account_id],
+    );
+    expect(acc?.status).toBe('suspended');
+
+    // Cascading key revocation hit the seeded key.
+    const k = await admin.queryOne<{ rotation_state: string }>(
+      `SELECT rotation_state FROM agent_api_keys WHERE key_id = $1`,
+      [key_id],
+    );
+    expect(k?.rotation_state).toBe('revoked');
+
+    // In-tx audit row written.
+    const commitRow = await admin.queryOne<{ account_id: string }>(
+      `SELECT account_id::text AS account_id FROM agent_audit_log
+        WHERE event_type = 'admin_suspend_committed' AND account_id = $1::uuid
+        ORDER BY id DESC LIMIT 1`,
+      [account_id],
+    );
+    expect(commitRow).not.toBeNull();
+    expect(commitRow?.account_id).toBe(account_id);
   });
 
   it('two-person flush-cache requires a valid co-signer envelope', async () => {

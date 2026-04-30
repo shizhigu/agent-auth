@@ -20,6 +20,7 @@ import {
   invalidateKey,
   invalidateAccountKeys,
 } from '../distributed/cache-invalidation.js';
+import { writeAuditRowOnClient } from '../audit/db-writer.js';
 import type { RedisAdapter } from '../storage/redis-adapter.js';
 import { reconcileAccountKeySets } from '../jobs/reconcile-redis-sets.js';
 
@@ -100,6 +101,25 @@ export const rbRevokeKey = (extra: RbRevokeKeyDeps): AdminCommandHandler => ({
             input.reason,
           ],
         );
+        // SPEC §6.4 — Tier B mutation MUST emit an audit row in the same
+        // transaction as the state change. The CLI dispatcher (cli.ts) writes
+        // an "admin_<command>" intent row before this handler runs; this
+        // in-tx row records the *commit* atomically with the revocation so
+        // RT-39 (audit omission by compromised app) cannot suppress evidence
+        // of a successful revoke after the intent has already been logged.
+        await writeAuditRowOnClient(client, {
+          event_type: 'admin_revoke_committed',
+          endpoint: 'cli',
+          status_class: 2,
+          account_id: row.account_id,
+          key_id,
+          meta: {
+            admin_id: input.admin_id,
+            reason: input.reason,
+            rb: 1,
+            epoch,
+          },
+        });
         return {
           status: 200,
           body: {
@@ -188,6 +208,19 @@ export const rbSuspendAccount = (
             input.reason,
           ],
         );
+        // SPEC §6.4 — same-tx audit for the commit (RT-39 fail-closed).
+        await writeAuditRowOnClient(client, {
+          event_type: 'admin_suspend_committed',
+          endpoint: 'cli',
+          status_class: 2,
+          account_id,
+          meta: {
+            admin_id: input.admin_id,
+            reason: input.reason,
+            rb: 2,
+            epoch,
+          },
+        });
         return {
           status: 200,
           body: { account_id, suspended_at: new Date().toISOString() },

@@ -151,7 +151,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - **Unit tests**: 326 passing across 44 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
-- **Integration**: 83 passing against real Postgres 16 + Redis 7
+- **Integration**: 84 passing against real Postgres 16 + Redis 7
   (testcontainers, ~80 s — healthz unhealthy-path waits ioredis retries):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
     fallback, invalid_secret rejection.
@@ -434,3 +434,18 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
      cache (RT-3-bounded staleness). Two unit regressions
      simulate getAuthoritativeEpoch failure and redis.get
      failure; both fail before the patch and pass after.
+  21. **§6.4 admin runbook missing in-tx audit** — `rbRevokeKey`
+     and `rbSuspendAccount` are Tier B mutations (wrapped in
+     `tierBIdempotent`) but didn't write an audit row inside
+     the mutation transaction. The CLI dispatcher writes an
+     "admin_<command>" intent row pre-handler, but per SPEC §6.4
+     "every Tier B mutation MUST emit an audit row in the same
+     transaction as the state change." Without the in-tx row,
+     the hash chain has no record atomically linked to the
+     commit (RT-39 vector: an attacker who can break the cli.ts
+     pre-handler audit but not the in-tx one — or vice versa —
+     can suppress evidence). Fix adds
+     `writeAuditRowOnClient(client, ...)` after the
+     `agent_revocation_log` INSERT in both runbooks. Two-row
+     forensic trail per admin op: intent (cli.ts) + commit
+     (in-tx). Integration test asserts both rows present.
