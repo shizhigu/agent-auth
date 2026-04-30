@@ -87,7 +87,10 @@ export function buildScrubber(cfg: ScrubberConfig = {}): CompiledScrubber {
 function scrubValue(v: unknown, depth: number, r: Resolved): unknown {
   if (v === null || v === undefined) return v;
   if (typeof v === 'boolean' || typeof v === 'number') return v;
-  if (typeof v === 'bigint') return Number(v);
+  // BigInts are commonly Postgres BIGSERIAL IDs that can exceed
+  // Number.MAX_SAFE_INTEGER (2^53). Stringify to preserve precision —
+  // Number() conversion would silently round huge IDs.
+  if (typeof v === 'bigint') return v.toString();
   if (typeof v === 'string') return scrubString(v, r);
   if (Buffer.isBuffer(v)) {
     // Buffers are usually binary keys / hashes — never log raw.

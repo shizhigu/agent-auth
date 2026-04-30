@@ -95,4 +95,19 @@ describe('scrubber — primitives + buffers', () => {
     };
     expect(out.key_hash).toMatch(/^\[REDACTED:BUFFER:3b\]$/);
   });
+
+  it('preserves bigint precision (Postgres BIGSERIAL IDs > Number.MAX_SAFE_INTEGER)', () => {
+    // 9007199254740993 = 2^53 + 1 — the smallest integer that loses precision
+    // when round-tripped through Number. The scrubber must keep it accurate
+    // because audit-log meta commonly carries `agent_audit_log.id` (BIGSERIAL).
+    const huge = 9007199254740993n;
+    expect(defaultScrubber.scrub({ event_id: huge })).toEqual({
+      event_id: '9007199254740993',
+    });
+    // Standalone bigint also stringified.
+    expect(defaultScrubber.scrub(huge)).toBe('9007199254740993');
+    // Smaller bigints also stringified (uniform behavior; downstream
+    // consumers don't have to special-case BigInt vs Number).
+    expect(defaultScrubber.scrub(42n)).toBe('42');
+  });
 });
