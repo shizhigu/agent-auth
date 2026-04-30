@@ -48,7 +48,10 @@ sign-off recorded in CHANGELOG).
 
 ## Security review
 
-- [ ] **OWASP API Top 10 self-review** — see docs/security/OWASP-API-self-review.md
+- [x] **OWASP API Top 10 self-review** — `docs/security/OWASP-API-self-review.md`
+  walks all 10 OWASP API 2023 risks against the lib's surface,
+  enumerates the controls (with [x] markers) and explicitly
+  delineates SaaS-side responsibilities
 - [~] **All 44 RT-* threats have integration / unit test coverage** (32 / 44 covered):
   - [x] RT-3 (Redis compromise → cache-only) — integration (redis flushdb fallback)
   - [x] RT-6 (webhook replay) — unit + integration (delivery_id dedup)
