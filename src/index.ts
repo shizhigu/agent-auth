@@ -126,3 +126,15 @@ export type {
   AuditWormEvent,
   S3WormPut,
 } from './audit/worm-writer.js';
+
+// Scheduled jobs (SPEC §13.1.2). The lib provides the building blocks;
+// the SaaS app composes them into its own worker process (or Kubernetes
+// CronJobs / Temporal workflows / etc.).
+export { reapRegistrationSessions } from './jobs/reaper.js';
+export { runWebhookReplay } from './jobs/webhook-replay.js';
+export { reconcileUnknownIdempotency } from './jobs/reconcile-idempotency.js';
+export { verifyAuditChain } from './jobs/audit-verifier.js';
+export { flushAuditOutbox } from './jobs/outbox-flusher.js';
+export { reconcileAccountKeySets } from './jobs/reconcile-redis-sets.js';
+export { manageAuditPartitions } from './jobs/audit-partition-manager.js';
+export { expireRotationGrace } from './jobs/rotation-grace-expirer.js';

@@ -148,10 +148,10 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Test summary at HEAD
 
-- **Unit tests**: 315 passing across 42 suites, ~930 ms wall (includes
+- **Unit tests**: 316 passing across 42 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
-- **Integration**: 75 passing against real Postgres 16 + Redis 7
+- **Integration**: 81 passing against real Postgres 16 + Redis 7
   (testcontainers, ~80 s — healthz unhealthy-path waits ioredis retries):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
     fallback, invalid_secret rejection.
@@ -330,3 +330,37 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
      mandates "Token discarded (NOT stored)". Now branches: revalidate
      refreshes `last_revalidated_at` only; `encrypted_payload`
      becomes nullable on the `completed` response variant.
+  11. **§2.2.4 webhook redelivery** — `/webhooks` returned 'duplicate'
+     for any ON CONFLICT hit, including rows where the previous
+     attempt had FAILED. Combined with the iter 56 webhook-replay
+     fix, a transient DB blip during cascade left the revoke
+     PERMANENTLY missed: replay would trigger redelivery forever
+     and every retry was a silent no-op. Now branches on
+     `existing.status` — 'failed' re-runs actions; idempotent
+     applyAction makes that safe.
+  12. **§2.2.2 concurrent registration race** — two same-identity
+     /callback requests would race the SELECT-FOR-UPDATE → INSERT
+     path; second would hit `agent_identities_unique_active` 23505
+     → opaque 500. Fixed via Postgres advisory lock keyed on
+     hashtextextended(`identity:{provider}|{subject}|{audience}`).
+  13. **§4.3 unhandled-rejection storm** — `tierBCommit`'s
+     `Promise.race` against the timeout left the operation pending
+     when the timeout won; late rejections (the slow commit
+     ultimately erroring with XX098) became unhandled-rejection
+     warnings. Under stuck-standby load, that storm became the
+     misleading alert signal. Fix: `.catch(() => undefined)` on the
+     operation BEFORE the race so late rejections are silently
+     absorbed.
+  14. **§5.1.1 idempotency reservation race** — phase-1 used
+     SELECT FOR UPDATE → INSERT; the FOR UPDATE on a non-existent
+     row holds no lock, so two concurrent same-key calls both
+     proceeded to INSERT and the second hit PK 23505 → opaque 500.
+     The very failure mode idempotency is meant to prevent. Fixed
+     via INSERT … ON CONFLICT (key) DO NOTHING RETURNING (xmax = 0)
+     — atomic, race-free.
+  15. **§2.7.3 rotation-grace expirer missing** — SPEC mandates a
+     60s job that flips `rotation_state='rotating'` →`'rotated'`
+     once grace expires. The job didn't exist. Added
+     `expireRotationGrace` (hygiene only — validateKey already
+     rejects grace-expired rows with 401, so unflipped rows are
+     safe).
