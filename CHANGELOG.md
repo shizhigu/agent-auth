@@ -79,6 +79,47 @@ from SPEC.md §11.2.
   stop chaos suite; fast-check property tests on idempotency state
   machine + canonical request hash.
 
+### Added since initial v0.1 cut
+
+- **`GET /keys`** (§10.1) — admin:keys-scoped projection of caller's
+  account keys; revoked rows excluded; cross-account guard.
+- **`GET /healthz`** (§10.2) — barrier + Redis + circuit-breaker probe;
+  200 healthy / 503 unhealthy with `reasons[]` aggregation.
+- **`GET /.well-known/agent-auth`** (§10.1) — service discovery body
+  composer; per-provider capability overrides; ValidationMode →
+  `barrier_mode` string translation.
+- **In-tx audit emission across all Tier B routes** (§6.4) —
+  `writeAuditRowOnClient(client, ...)` in-tx variant; wired into
+  /revoke, /rotate-key (planned + emergency), /webhooks cascade,
+  /callback (all kinds), /recover-account-confirm. The in-DB hash
+  chain now captures every Tier B mutation atomically.
+- **Daily audit-log partition manager** (§3.8 / §13.1.2) — pre-creates
+  `agent_audit_log_YYYY_MM_DD` partitions for the next N days; idempotent
+  on rerun. Migration 0002 sets parent OWNER to `agent_auth_migrator`
+  so the partition job can attach.
+- **`docs/break_glass.md`** (§8.1 / RT-38) — operator procedure for
+  the independent break-glass admin path (physical YubiKeys + sealed
+  envelopes, two-person, 24h post-mortem).
+
+### Fixed since initial v0.1 cut
+
+- **Tier B WORM failure now fails-closed** (§6.4.2 / RT-28) —
+  `writeAuditToWorm` was silently returning `outboxed` for Tier B
+  events when the S3 put failed, which would let an attacker who
+  suppresses S3 get a free pass to revoke/rotate without producing a
+  durable WORM record. Now throws `ServiceUnavailableError(audit_unavailable)`
+  for Tier B (outbox row still durable for retry); Tier A unchanged.
+- **`/recover-account-confirm` concurrency** — the `SELECT FOR UPDATE`
+  was running on `deps.postgres.queryOne` (fresh pooled connection per
+  call), so the row lock was released the instant queryOne returned.
+  The read-modify-write is now wrapped in a single `transaction()`,
+  which holds the lock across the UPDATE and lets the audit row commit
+  atomically with the decision.
+- **`config.audit_worm` type alignment** — was a stub
+  `{putObject({Key, Body})}` that never matched the real `WormPutter`
+  interface. Now typed as `WormPutter`; SaaS apps can wire
+  `AwsS3WormPutter` directly via config.
+
 ### Decisions
 
 - **ADR-014** — `tierBCommit` is the sole converter of `TierBTimeoutError`
