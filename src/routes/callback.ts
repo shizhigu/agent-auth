@@ -198,6 +198,24 @@ export async function callback(
     }
 
     // 4. Locate / create identity row.
+    //
+    // Take a transaction-scoped advisory lock keyed on the identity triple
+    // BEFORE the SELECT, so concurrent /callback requests for the same
+    // (provider, subject, audience) — same human re-clicking, two browser
+    // tabs, slow OAuth round-trip — serialize on this row's creation
+    // path. Without the lock, T1 and T2 both SELECT no-row, both proceed
+    // to Case-A INSERT, and T2 hits the
+    // `agent_identities_unique_active` UNIQUE INDEX → SQLSTATE 23505 →
+    // txn aborts → opaque 500 to the agent. With the lock, T2 waits for
+    // T1's commit, then sees T1's row and falls through to Case B.
+    //
+    // Hash the triple to a 64-bit key. pg_advisory_xact_lock takes a
+    // single bigint; hashtextextended gives 64-bit hash with stable
+    // distribution. Released automatically at COMMIT/ROLLBACK.
+    await client.query(
+      `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+      [`identity:${provider.name}|${attestation.subject}|${attestation.audience}`],
+    );
     const idRes = await client.query<IdentityRow>(
       `SELECT id, account_id, status, revocation_source
          FROM agent_identities

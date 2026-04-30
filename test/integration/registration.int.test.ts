@@ -378,4 +378,104 @@ describe('integration: full registration flow (SPEC §2.2.2 + §2.6)', () => {
     );
     expect(Number(keysAtB?.c ?? '0')).toBe(0);
   });
+
+  it('concurrent /callback for the same identity (provider+subject+audience) serializes via advisory lock — both succeed, single account', async () => {
+    // Provider that returns the SAME attestation for both flows. Models the
+    // realistic scenario: same human, two browser tabs, both clicking
+    // "Authorize" within ms. Without the advisory lock, the second
+    // callback would race the first and hit `agent_identities_unique_active`
+    // 23505 → opaque 500.
+    const sharedProvider: IdentityProvider = {
+      name: 'github_app',
+      async beginRegistration(ctx) {
+        return { challenge_url: `https://github.com/login/oauth/authorize?state=${ctx.nonce}` };
+      },
+      async exchangeOrVerify(_input, ctx): Promise<Attestation> {
+        return {
+          issuer: 'github.com',
+          subject: 'concurrent-race-1',
+          audience: ctx.audience,
+          display_handle: 'concurrent-octo',
+          assurance_level: 'medium',
+          supports_revalidation: true,
+        };
+      },
+      async revalidate() {
+        return { still_valid: true };
+      },
+    };
+
+    // Two independent /begin-registration sessions, both bound to the
+    // same audience. Both will try to register the same subject.
+    const beginA = await beginRegistration(
+      {
+        provider: 'github_app',
+        intent: 'register',
+        client_pubkey: agentKp.publicKey.toString('base64url'),
+      },
+      {
+        postgres: fix.postgres,
+        identity_providers: [sharedProvider],
+        redirect_uri: () => 'https://saas.example/callback',
+        audience: () => 'Iv1.regtest',
+        request_context: { ip_hash: Buffer.alloc(32, 9), user_agent: 'integration' },
+      },
+    );
+    const beginB = await beginRegistration(
+      {
+        provider: 'github_app',
+        intent: 'register',
+        client_pubkey: agentKp.publicKey.toString('base64url'),
+      },
+      {
+        postgres: fix.postgres,
+        identity_providers: [sharedProvider],
+        redirect_uri: () => 'https://saas.example/callback',
+        audience: () => 'Iv1.regtest',
+        request_context: { ip_hash: Buffer.alloc(32, 9), user_agent: 'integration' },
+      },
+    );
+    const sessA = await fix.postgres.queryOne<{ nonce: string }>(
+      `SELECT nonce FROM agent_registration_sessions WHERE poll_token = $1`,
+      [beginA.poll_token],
+    );
+    const sessB = await fix.postgres.queryOne<{ nonce: string }>(
+      `SELECT nonce FROM agent_registration_sessions WHERE poll_token = $1`,
+      [beginB.poll_token],
+    );
+
+    // Race them.
+    const [outA, outB] = await Promise.all([
+      callback(
+        { provider: 'github_app', state: sessA!.nonce, code: 'cA' },
+        {
+          postgres: fix.postgres,
+          kms: fix.kms,
+          identity_providers: [sharedProvider],
+          request_context: { ip_hash: Buffer.alloc(32, 9), user_agent: 'integration' },
+        },
+      ),
+      callback(
+        { provider: 'github_app', state: sessB!.nonce, code: 'cB' },
+        {
+          postgres: fix.postgres,
+          kms: fix.kms,
+          identity_providers: [sharedProvider],
+          request_context: { ip_hash: Buffer.alloc(32, 9), user_agent: 'integration' },
+        },
+      ),
+    ]);
+    expect(outA.status).toBe('success');
+    expect(outB.status).toBe('success');
+    if (outA.status !== 'success' || outB.status !== 'success') return;
+    // Both succeed, both bind to the SAME account (one created Case A,
+    // the other fell through to Case B and reused).
+    expect(outA.account_id).toBe(outB.account_id);
+    // Exactly one account exists for this subject — not two.
+    const accCount = await fix.postgres.queryOne<{ c: string }>(
+      `SELECT count(*)::text AS c FROM agent_identities
+        WHERE provider = 'github_app' AND subject = 'concurrent-race-1'`,
+    );
+    expect(Number(accCount?.c ?? '0')).toBe(1);
+  });
 });
