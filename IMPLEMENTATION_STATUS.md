@@ -145,8 +145,8 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 - **Unit tests**: 262 passing across 35 suites, ~880 ms wall (includes
   fast-check property tests on idempotency state machine + canonicalRequestHash).
-- **Integration**: 10 passing against real Postgres 16 + Redis 7
-  (testcontainers, ~11 s):
+- **Integration**: 12 passing against real Postgres 16 + Redis 7
+  (testcontainers, ~12 s):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
     fallback, invalid_secret rejection.
   - revoke.int (2): Tier B revoke writes log + bumps epoch + invalidates
@@ -154,6 +154,10 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
   - webhook.int (4): cascade revoke (active + rotating keys + account
     suspension); RT-6 replay returns 'duplicate'; RT-30 collision raises
     onAlert; bad HMAC writes nothing to agent_webhook_events.
+  - registration.int (2): full /begin → /callback → /status flow; sealed
+    payload decrypts to validate-able key; replay /callback rejected.
+- **Chaos**: 2 passing (~4 s) — RT-25 healthy + partitioned-Redis
+  no-false-accept invariant via testcontainers stop().
 - **Bench**: validation_cache_hit P50/P99 = 2.5 µs / 4.3 µs;
   validation_cache_miss_with_hmac P50/P99 = 5.0 µs / 8.9 µs.
 - **Typecheck**: clean (`tsc --noEmit`).
