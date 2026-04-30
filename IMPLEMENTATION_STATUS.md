@@ -126,6 +126,19 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Known gaps (deferred to v0.1.1)
 
+- **§3.15 agent_jobs table has no consumer** — the
+  `sync_account_tier_to_keys` trigger enqueues
+  `cache_invalidate_keys` job rows into `agent_jobs` whenever an
+  account's tier changes (e.g. plan upgrade/downgrade). The lib
+  doesn't ship a worker that processes those rows; they
+  accumulate. Practical effect: tier changes propagate to caches
+  only via TTL (RT-3's bounded 30 s) rather than via explicit
+  invalidation. Acceptable per RT-3 stale-auth budget; SaaS apps
+  that want immediate propagation can call
+  `invalidateAccountKeys(pg, redis, account_id)` directly after
+  a tier UPDATE. Tracking as deferred — either ship a generic
+  `agent_jobs` worker or drop the trigger's enqueue.
+
 - **§2.9 owner_approval doesn't actually gate /callback** —
   `emitOwnerApprovalRequest` (called from /recover-account) writes
   the agent_recovery_approvals row with decision='pending' and
