@@ -19,15 +19,15 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - [x] `src/errors.ts` — `AgentAuthError` class, `ServiceUnavailableError`, error code enum §10.4
 - [x] `src/agent-context.ts` — frozen `AgentContext` builder, no `req.user` (§6.3 confused-deputy)
 - [x] `src/storage/postgres-adapter.ts` — pg Pool wrapper with role-aware connections + transaction helper (§3.16)
-- [ ] `src/storage/redis-adapter.ts` — ioredis wrapper, Lua script loader, pubsub
+- [x] `src/storage/redis-adapter.ts` — ioredis wrapper, Lua script loader (epoch MAX), pubsub patterns; InMemoryRedisAdapter for tests
 - [x] `src/storage/kms-adapter.ts` — AWS KMS wrapper (envelope encrypt/decrypt) + InMemoryKmsAdapter for tests, dual-pepper §6.1.2
 - [x] `src/crypto/hmac-pepper.ts` — HMAC-SHA256 with KMS-held pepper, dual-pepper rotation, constant-time-stable verification §6.1.1
-- [ ] `src/crypto/audit-hash.ts` — SHA-256 over canonical JSON (mirrors §3.8 trigger)
-- [ ] `src/crypto/pkce.ts` — PKCE S256 helpers
-- [ ] `src/middleware/validate-key.ts` — main validation flow (Redis → Postgres) §5.3.3
+- [x] `src/crypto/audit-hash.ts` — canonicalAuditText + computeRowHash + verifyChain (mirrors §3.8 trigger)
+- [x] `src/crypto/pkce.ts` — generatePkcePair + deriveChallenge (RFC 7636 §4.1, S256)
+- [x] `src/middleware/validate-key.ts` — full validation flow §5.3.3 (local → Redis → Postgres, epoch invalidation, dual-pepper HMAC)
 - [ ] `src/middleware/express-adapter.ts` + `src/middleware/hono-adapter.ts`
-- [ ] `src/cache/local-cache.ts` — in-memory LRU 1000, 30 s TTL §5.3.1
-- [ ] `src/config.ts` — `AgentAuthConfig` type + defaults §11.4
+- [x] `src/cache/local-cache.ts` — LRU 1000 + 30 s TTL + injectable clock §5.3.1
+- [x] `src/config.ts` — `AgentAuthConfig` type + `resolveConfig()` defaults §11.4
 - [ ] Unit tests for: validation flow, agent-context immutability, error mapping, hmac-pepper dual-window, hash chain canonicalization
 - [ ] **Deliverable**: SaaS can mount middleware and validate manually-inserted keys (per §11.2 M1)
 
