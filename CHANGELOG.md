@@ -120,6 +120,75 @@ from SPEC.md §11.2.
   interface. Now typed as `WormPutter`; SaaS apps can wire
   `AwsS3WormPutter` directly via config.
 
+### Added in the post-v0.1 correctness sweep (continued)
+
+- **`processAgentJobs` worker** (§3.15) — generic claim+dispatch
+  worker for the `agent_jobs` queue. SELECT FOR UPDATE SKIP LOCKED;
+  built-in `cache_invalidate_keys` handler; SaaS-extensible via
+  `extra_handlers`. Dead-letter alerting after `max_attempts`;
+  unknown kinds marked completed with alert. Lease-expiry
+  reclaims rows whose worker died mid-run (default 5 min lease).
+- **`reapExpiredRows`** (§3.14, §5.1.1, §6.4.2, §3.15) — drains
+  `agent_recovery_approvals`, `agent_idempotency` (terminal states
+  only), `agent_audit_outbox` (post-flush), and `agent_jobs`
+  (terminal states) past their respective retention grace.
+- **§2.9 owner-approval-gated recovery** — `/callback` now defers
+  key issuance when the approval row is `pending`, persisting the
+  OAuth-verified identity_id on the session via the new
+  `awaiting_identity_id` column (migration 0006).
+  `/recover-account-confirm` finalizes on `approved` (issues key,
+  seals, transitions session to `ready`) and fails on `denied`.
+  `emitOwnerApprovalRequest` also extends session `expires_at` to
+  match the approval window so a slow owner doesn't lose the
+  session to the reaper.
+- **Migration 0005** — `compute_audit_row_hash` trigger uses
+  `date_trunc('day', NEW.ts, 'UTC')` instead of session-tz form;
+  prevents false hash-chain breaks on non-UTC Postgres sessions.
+- **Migrations round-trip integration test** — automates SPEC §3.17
+  forward+backward+forward verification.
+- **Property tests** (§12.5 partial) — fast-check sweeps over
+  idempotency state machine + `canonicalRequestHash`.
+
+### Fixed in the post-v0.1 correctness sweep (continued)
+
+Selected highlights — full per-iteration log in
+`IMPLEMENTATION_STATUS.md` sweep entries 1..31. Net: ~30 bugs
+caught reading the SPEC alongside code, none of which were
+caught by the existing test suite.
+
+- **RT-10 two-person-rule envelope substitution** (§8.1) —
+  attacker could reuse a co-signer's signature for a benign op
+  on an envelope rewritten to a destructive op.
+  `verifyCoSignature` now reconstructs canonical from envelope
+  parts; mismatches fail fast.
+- **RT-26 redis-down 500** — `validateKey` propagated Redis
+  exceptions through to a 5xx; SPEC says fall through to
+  Postgres. Now skips cache layer when Redis throws.
+- **§3.8 audit chain TZ misalignment** — see migration 0005.
+- **§5.1.1 idempotency reservation race** — replaced
+  `SELECT FOR UPDATE → INSERT` with `INSERT ... ON CONFLICT DO
+  NOTHING RETURNING (xmax=0)` (FOR UPDATE on missing rows holds
+  no lock).
+- **§5.1.2 reconciler skipped pending → failed** — only flipped
+  unknown rows; SPEC says both pending and unknown.
+- **§6.4.2 outbox starvation** — stuck rows filled the working
+  SELECT's LIMIT slots, blocking fresh writes.
+- **§2.2.5 webhook-replay false-positive cap_hit** — partial-page
+  break with pageCount==max_pages incorrectly fired the alert.
+- **§2.2.4 webhook redelivery of failed deliveries** — duplicate
+  delivery returned 'duplicate' even when the prior attempt
+  failed; replay would silently no-op forever.
+- **§7.2 logger meta keys could override `level`/`msg`/`ts`** —
+  spread order was wrong.
+- **§8.1 JIT RBAC NaN-ttl immortal grant** — NaN expires_at
+  evades the `<= now()` check.
+- **§3.16 PostgresAdapter role SQL injection (defense in depth)**
+  — runtime whitelist on the constructor.
+- **§4.3 tierBCommit unhandled-rejection storm** — late
+  `Promise.race` losers had no handler.
+- **§2.7.3 rotation-grace expirer added** — 60s job flips
+  `rotating → rotated` once grace expires.
+
 ### Decisions
 
 - **ADR-014** — `tierBCommit` is the sole converter of `TierBTimeoutError`

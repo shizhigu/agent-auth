@@ -95,7 +95,10 @@ sign-off recorded in CHANGELOG).
 - [x] **Runbooks RB-1..RB-9 documented** — `docs/runbooks/INDEX.md`
 - [x] **`scripts/post-promotion-reset.sh` mapped to RB-8**
 - [x] **`scripts/dr-drill.sh` mapped to §8.3.3**
-- [ ] **CHANGELOG entry written** with security implications called out
+- [x] **CHANGELOG entry written** with security implications called out
+  — post-v0.1 sweep summary covers ~30 caught bugs + 4 new
+  features (agent_jobs worker, reapExpiredRows, deferred
+  recovery, migrations round-trip), with RT-numbered references
 - [ ] **Migration guide** for SaaS adopters (peer dep changes,
   config breaking changes if any)
 - [ ] **Examples updated** — `examples/express-integration.ts`,
