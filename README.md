@@ -16,9 +16,26 @@ A library that a SaaS provider drops into their backend so AI agents (Claude Cod
 
 ## Status
 
-**Spec stage.** Implementation pending.
+**v0.1 implementation complete.** All 8 milestones (M1-M8) delivered;
+v0.1.1 deployment-gated items enumerated in `docs/PRE_RELEASE_CHECKLIST.md`.
 
-The specification has been audited across 13 rounds with codex (GPT-5). Final grade: **A spec / production-ready paying-customer design level**. A+ is unattainable in spec form alone (requires deployed controls + tested failover + completed SOC 2 audit + customer reference deployments).
+**Test coverage at HEAD** (see `IMPLEMENTATION_STATUS.md` for the full breakdown):
+
+| Tier | Count | Wall | Notes |
+|---|---|---|---|
+| Unit (vitest) | 262 | ~0.9 s | includes fast-check property sweeps |
+| Integration (testcontainers Postgres + Redis) | 32 | ~35 s | real DB + trigger invariants |
+| Chaos (testcontainers + injected faults) | 14 | ~10 s | RT-15/18/22/25/32/34/43 |
+| Bench (vitest bench) | 2 | 5 s | cache-hit P99 ≈ 4 µs, miss+HMAC P99 ≈ 9 µs (§12.6 target 50/100 ms) |
+
+33 of 44 RT-* threats have automated test coverage; the remaining 11 are
+out-of-band SaaS-side / agent-SDK responsibilities or acknowledged
+compromises per SPEC §6.2.7.
+
+The specification has been audited across 13 rounds with codex (GPT-5).
+Final grade: **A spec / production-ready paying-customer design level**.
+A+ is unattainable in spec form alone (requires deployed controls +
+tested failover + completed SOC 2 audit + customer reference deployments).
 
 ## Tech stack (one-liner)
 
