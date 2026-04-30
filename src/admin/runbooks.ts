@@ -283,6 +283,53 @@ export const rbResolveIdempotency = (): AdminCommandHandler => ({
 });
 
 // ---------------------------------------------------------------------------
+// Read-only: audit-tail. SPEC §8.2 / RB-6 forensic-response support.
+// Caller passes `options.{since?, account_id?, key_id?, event_type?, limit?}`.
+// Defaults: last 24h, limit 100. Hard-capped at 10_000 to prevent DoS via
+// runaway query.
+// ---------------------------------------------------------------------------
+
+export const rbAuditTail = (): AdminCommandHandler => ({
+  async run(input, deps) {
+    const opts = (input.options ?? {}) as {
+      since?: string;
+      account_id?: string;
+      key_id?: string;
+      event_type?: string;
+      limit?: number;
+    };
+    const since = opts.since ? new Date(opts.since) : new Date(Date.now() - 24 * 3600 * 1000);
+    const limit = Math.max(1, Math.min(10_000, opts.limit ?? 100));
+    const where: string[] = ['ts >= $1'];
+    const params: unknown[] = [since];
+    if (opts.account_id) {
+      params.push(opts.account_id);
+      where.push(`account_id = $${params.length}::uuid`);
+    }
+    if (opts.key_id) {
+      params.push(opts.key_id);
+      where.push(`key_id = $${params.length}`);
+    }
+    if (opts.event_type) {
+      params.push(opts.event_type);
+      where.push(`event_type = $${params.length}`);
+    }
+    params.push(limit);
+    const rows = await deps.postgres.query(
+      `SELECT id::text AS id, ts, event_type, account_id::text AS account_id,
+              key_id, identity_id::text AS identity_id, endpoint, status_class,
+              meta
+         FROM agent_audit_log
+        WHERE ${where.join(' AND ')}
+        ORDER BY id DESC
+        LIMIT $${params.length}`,
+      params,
+    );
+    return { rows: rows.rows, count: rows.rows.length };
+  },
+});
+
+// ---------------------------------------------------------------------------
 // Convenience: build the default handler map for AdminDispatchDeps.handlers.
 // ---------------------------------------------------------------------------
 
@@ -297,6 +344,7 @@ export function defaultRunbookHandlers(deps: {
     'unblock-identity': rbUnblockIdentity(),
     'reconcile-redis-sets': rbReconcileRedisSets({ redis: deps.redis }),
     'resolve-idempotency': rbResolveIdempotency(),
+    'audit-tail': rbAuditTail(),
   };
 }
 
