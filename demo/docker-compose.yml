@@ -1,0 +1,32 @@
+# Local Postgres + Redis for the demo.
+# Run `docker compose up -d` from this directory.
+#
+# Both containers are ephemeral — `docker compose down -v` wipes them clean
+# so you can start over without artifacts polluting the next run.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agent-auth-demo-pg
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: agent_auth_demo
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d agent_auth_demo"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    container_name: agent-auth-demo-redis
+    ports:
+      - "56379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
