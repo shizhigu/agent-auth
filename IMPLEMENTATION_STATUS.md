@@ -148,10 +148,10 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Test summary at HEAD
 
-- **Unit tests**: 293 passing across 41 suites, ~930 ms wall (includes
+- **Unit tests**: 315 passing across 42 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
-- **Integration**: 73 passing against real Postgres 16 + Redis 7
+- **Integration**: 75 passing against real Postgres 16 + Redis 7
   (testcontainers, ~80 s — healthz unhealthy-path waits ioredis retries):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
     fallback, invalid_secret rejection.
@@ -283,3 +283,50 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - **2026-04-30 (M7)**: Audit verifier semantics. SPEC §6.4.1 verifier walks rows checking `prev_hash[i] == row_hash[i-1]` (linkage only). Earlier the TS `verifyChain` ALSO recomputed the row_hash from canonical bytes, but that requires reproducing Postgres's `jsonb_build_object(...)::text` output exactly — fragile because of timestamptz formatting and meta=NULL vs meta=undefined. Aligned to SPEC: hourly verifier uses `verifyChain` (linkage). The byte-level recompute lives in `verifyChainStrict`, used only by offline tamper-detection unit tests where canonical inputs are controlled. Real tamper detection in production: the §3.8 trigger on the next INSERT recomputes against the tampered row_hash, breaking the chain — `verifyChain` then catches the linkage break.
 
 - **2026-04-30 (M7)**: Audit-log app-role grant. SPEC §3.16 wording was "GRANT SELECT, INSERT, UPDATE on ALL TABLES to agent_auth_app, then REVOKE UPDATE+DELETE on agent_audit_log". Equivalent end state: app role has SELECT + INSERT but no UPDATE/DELETE. Implemented as explicit `GRANT INSERT, SELECT ON agent_audit_log TO agent_auth_app` (instead of broad-grant + REVOKE), which is functionally identical and easier to read in 0002_audit.sql. Append-only invariant preserved.
+
+- **2026-04-30 (post-v0.1 sweep)**: Correctness sweep on the implemented
+  surface caught nine real bugs that escaped the v0.1 cut. Logged here
+  for audit history; commits are linked in CHANGELOG. None were caught
+  by the existing test suite — all required reading the SPEC alongside
+  the implementation:
+  1. **RT-28 / §6.4.2** — `writeAuditToWorm` silently returned
+     `outboxed` for Tier B when S3 PutObject failed. Now throws
+     `ServiceUnavailableError(audit_unavailable)`. Closed an evidence-
+     suppression vector.
+  2. **§5.1.3** — `tierBIdempotent` replay-of-failed always returned
+     wire `code: 'invalid_request'` regardless of original error.
+     Now preserves the original `code` + `message` + merges
+     `details.replay = true`.
+  3. **§10.5** — Hono adapter never set `X-Request-Id` on success
+     responses (only on errors). Now uses Hono v4's `c.header()`
+     after `next()`.
+  4. **Testability** — `validateAgainstCache` ignored the injectable
+     clock for `key_expired` / `rotation_grace_expired` checks, so
+     fake-clock tests for those paths weren't deterministic. Threaded
+     `now` through.
+  5. **Testability** — `registrationStatus` and `recoverAccountStatus`
+     used `Date.now()` directly for session-expiry checks. Both now
+     accept injectable `now`.
+  6. **Packaging** — `package.json` `exports` map didn't allow the
+     deep imports the shipped examples use (e.g.,
+     `agent-auth/identity/github-app/browser-flow.js`). First
+     `npm install` would error out. Added wildcard subpaths.
+  7. **§6.6 / RT-44 precision** — Scrubber converted `bigint` →
+     `Number()` lossy (rounds past 2^53). Postgres BIGSERIAL IDs in
+     audit meta would be silently corrupted. Now stringifies bigints.
+  8. **§2.2.5 catch-up** — webhook-replay seeded the cursor with
+     `last_seen_delivery_id`, but GitHub's pagination is reverse-
+     chronological so cursor=X returns deliveries OLDER than X. Every
+     run after the first SCANNED ALREADY-PROCESSED rows and silently
+     skipped any new failed deliveries. Now uses the watermark as an
+     inner-loop early-stop instead.
+  9. **RT-19 atomicity** — `/recover-account-confirm` enforced webhook-
+     nonce single-use with `GET → check → SET` (TOCTOU). Concurrent
+     requests with the same nonce could both pass the replay check.
+     Added atomic `setIfNotExists` (`SET NX EX`) on the RedisAdapter
+     and used it for the nonce claim.
+  10. **§2.4 revalidate** — `/callback` always called `issueNewKey`
+     even for `kind='revalidate'` sessions where SPEC §2.4 step 6
+     mandates "Token discarded (NOT stored)". Now branches: revalidate
+     refreshes `last_revalidated_at` only; `encrypted_payload`
+     becomes nullable on the `completed` response variant.
