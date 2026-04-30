@@ -47,8 +47,16 @@ export async function tierBCommit<T>(
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutHandle = setTimeout(() => reject(new TierBTimeoutError()), ms);
   });
+  // Start the operation. If the timeout wins the Promise.race, the operation
+  // is still pending — Promise.race does NOT cancel the loser. To avoid an
+  // unhandled rejection when the operation eventually fails (e.g., the slow
+  // commit ultimately errors with XX098 *after* we've already returned 503),
+  // attach a no-op .catch() to swallow the late rejection. Resolved values
+  // are silently discarded.
+  const opPromise = operation();
+  opPromise.catch(() => undefined);
   try {
-    return await Promise.race([operation(), timeoutPromise]);
+    return await Promise.race([opPromise, timeoutPromise]);
   } catch (err) {
     if (err instanceof TierBTimeoutError) {
       throw new ServiceUnavailableError('durability_unconfirmed', undefined, { cause: err });

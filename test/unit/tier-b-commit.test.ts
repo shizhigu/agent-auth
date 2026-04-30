@@ -55,4 +55,29 @@ describe('tierBCommit (SPEC §4.3)', () => {
       }),
     ).rejects.toThrow('something else');
   });
+
+  it('does NOT raise an unhandled rejection when the operation rejects AFTER the timeout fires', async () => {
+    // Process-wide unhandledRejection listener catches anything that escapes
+    // tierBCommit's late-rejection handling. If the lib forgets to swallow
+    // the loser of Promise.race, this test will fail with the captured
+    // rejection.
+    const captured: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => {
+      captured.push(reason);
+    };
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const slowReject = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('late_rejection_after_timeout')), 30);
+      });
+      await expect(
+        tierBCommit(() => slowReject, { timeout_ms: 5 }),
+      ).rejects.toMatchObject({ code: 'durability_unconfirmed' });
+      // Wait long enough for the slow rejection to fire post-timeout.
+      await new Promise<void>((r) => setTimeout(r, 60));
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+    expect(captured).toHaveLength(0);
+  });
 });
