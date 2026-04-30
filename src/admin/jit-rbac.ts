@@ -62,6 +62,22 @@ export class JitRbac {
     if (!args.reason || args.reason.length < 8) {
       throw new AgentAuthError(400, 'invalid_request', 'reason required (≥8 chars)');
     }
+    // Defense in depth (SPEC §8.1): non-finite or non-positive
+    // ttl_seconds must be rejected. NaN slips past `Math.min` and
+    // makes expires_at = NaN; subsequent `expires_at <= now()` checks
+    // are always false (NaN comparisons), producing an effectively-
+    // immortal grant — bypassing the 4h cap entirely. Infinity caps
+    // safely but we reject for clarity, and ≤0 produces an immediately-
+    // dead grant which is a UX footgun.
+    if (args.ttl_seconds !== undefined) {
+      if (!Number.isFinite(args.ttl_seconds) || args.ttl_seconds <= 0) {
+        throw new AgentAuthError(
+          400,
+          'invalid_request',
+          'ttl_seconds must be a positive finite number',
+        );
+      }
+    }
     const ttl_ms = Math.min(
       this.max_ttl_ms,
       (args.ttl_seconds ?? this.default_ttl_ms / 1000) * 1000,

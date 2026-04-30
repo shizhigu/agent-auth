@@ -165,7 +165,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Test summary at HEAD
 
-- **Unit tests**: 328 passing across 44 suites, ~930 ms wall (includes
+- **Unit tests**: 329 passing across 44 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
 - **Integration**: 87 passing against real Postgres 16 + Redis 7
@@ -504,3 +504,14 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
      comes first, canonical fields last; a unit regression seeds
      a meta with `level/ts/msg` overrides and asserts the
      canonical fields win.
+  25. **§8.1 JIT RBAC immortal grant via NaN ttl** —
+     `JitRbac.grant({ ttl_seconds: NaN })` produced
+     `expires_at = granted_at + NaN = NaN`. Subsequent
+     `expires_at <= now()` checks compare against NaN and always
+     return false — the grant lives forever, bypassing the 4h
+     SPEC §8.1 cap. Also caught: `ttl_seconds = 0` and negative
+     values create immediately-dead grants (UX footgun) and
+     `Infinity` is safely capped but inconsistent. Fix rejects
+     non-finite or non-positive `ttl_seconds` with 400
+     invalid_request. Defense-in-depth — current call sites
+     don't pass user input here, but a future one might.

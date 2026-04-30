@@ -48,6 +48,27 @@ describe('JitRbac (SPEC §8.1 admin.jit_rbac)', () => {
     expect(g.expires_at - g.granted_at).toBe(60_000);
   });
 
+  it('rejects non-finite ttl_seconds (NaN, Infinity, negative) — RT-10 defense in depth', async () => {
+    // A NaN or non-positive ttl makes expires_at = NaN, which slips past
+    // the `expires_at <= now()` check (NaN comparisons are always false)
+    // and produces an effectively-immortal grant. SPEC §8.1 caps grants
+    // at 4h max; the defense must reject anything that bypasses that cap.
+    const rbac = new JitRbac();
+    expect(() =>
+      rbac.grant({ admin_id: 'a', role: 'agent_auth_admin', reason: 'reason123', ttl_seconds: Number.NaN }),
+    ).toThrow(/ttl_seconds/);
+    expect(() =>
+      rbac.grant({ admin_id: 'a', role: 'agent_auth_admin', reason: 'reason123', ttl_seconds: 0 }),
+    ).toThrow(/ttl_seconds/);
+    expect(() =>
+      rbac.grant({ admin_id: 'a', role: 'agent_auth_admin', reason: 'reason123', ttl_seconds: -1 }),
+    ).toThrow(/ttl_seconds/);
+    // +Infinity is safe (Math.min caps it) but also rejected for clarity.
+    expect(() =>
+      rbac.grant({ admin_id: 'a', role: 'agent_auth_admin', reason: 'reason123', ttl_seconds: Number.POSITIVE_INFINITY }),
+    ).toThrow(/ttl_seconds/);
+  });
+
   it('revoke removes the grant and emits audit', () => {
     const events: Array<{ kind: string }> = [];
     const rbac = new JitRbac({ onAudit: (e) => events.push({ kind: e.kind }) });
