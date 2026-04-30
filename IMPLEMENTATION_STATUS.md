@@ -126,20 +126,18 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Known gaps (deferred to v0.1.1)
 
-- **§2.9 owner_approval doesn't actually gate /callback** —
-  `emitOwnerApprovalRequest` (called from /recover-account) writes
-  the agent_recovery_approvals row with decision='pending' and
-  fires a signed webhook. /recover-account-confirm later updates
-  the decision. But /callback for kind='recover' issues the new
-  key without checking decision. SPEC §2.9 step 5–6: "Wait for
-  approval ... After approval (or if not required) ... Issue NEW
-  key". Effect: configured owner-approval webhooks notify the
-  owner but don't actually gate recovery. Refactor scope: needs
-  a session "awaiting_approval" status (or equivalent), key
-  issuance deferred until approval, and a way for the deny path
-  to revoke an already-issued key. SaaSes that don't configure
-  owner_approval are unaffected. Tracked as deferred; no test
-  exercises the gating today, so no integration regression.
+- **§2.9 owner_approval pending case** — partial fix shipped: the
+  deny path is now honored — /callback for kind='recover' looks
+  up `agent_recovery_approvals` and fails the session with
+  `owner_denied_recovery` if the owner has decided 'denied'
+  before /callback runs. The remaining gap is the "wait for
+  approval" semantic of SPEC §2.9 step 5: when the owner hasn't
+  yet decided ('pending'), /callback still issues the key
+  immediately rather than deferring. Closing that case requires
+  a multi-component refactor: schema migration to add
+  `awaiting_identity_id`, defer key issuance in /callback, add a
+  finalize path in /recover-account-confirm that issues the key
+  on 'approved'. Tracked for v0.1.1.
 
 ## Cross-cutting / pre-release (SPEC §12.7)
 
@@ -189,7 +187,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Test summary at HEAD
 
-- **Unit tests**: 339 passing across 46 suites, ~930 ms wall (includes
+- **Unit tests**: 341 passing across 46 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
 - **Integration**: 91 passing against real Postgres 16 + Redis 7

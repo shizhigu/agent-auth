@@ -332,6 +332,30 @@ export async function callback(
       return { status: 'failed' as const, reason: 'account_suspended_unsuspend_first' };
     }
 
+    // 5b. SPEC §2.9 owner-approval deny gate.
+    //
+    // /recover-account inserts an agent_recovery_approvals row with
+    // decision='pending' and emits the signed approval webhook. The
+    // owner replies via /recover-account-confirm, flipping the decision
+    // to 'approved' or 'denied'. A 'denied' decision MUST block key
+    // issuance even if /callback got here first.
+    //
+    // (The full SPEC contract also defers issuance on 'pending' until
+    // approval lands; that's tracked as a deferred limitation. The
+    // deny check is the immediate win — without it a malicious
+    // recovery still issues a key when the owner explicitly said no.)
+    if (session.kind === 'recover') {
+      const apprRes = await client.query<{ decision: string | null }>(
+        `SELECT decision FROM agent_recovery_approvals WHERE poll_token = $1`,
+        [session.poll_token],
+      );
+      const decision = apprRes.rows[0]?.decision;
+      if (decision === 'denied') {
+        await failSession(client, session.poll_token, 'owner_denied_recovery');
+        return { status: 'failed' as const, reason: 'owner_denied_recovery' };
+      }
+    }
+
     // 6. SPEC §2.4: kind='revalidate' refreshes last_revalidated_at ONLY
     //    — no new key is issued, no token is stored. The agent retries
     //    its original request with its EXISTING bearer once the session

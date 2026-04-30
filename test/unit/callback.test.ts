@@ -67,6 +67,7 @@ class FakeDb {
   accounts = new Map<string, AccountRow>();
   identities = new Map<string, IdentityRow>(); // by id
   keys = new Map<string, KeyRow>(); // by id
+  recoveryApprovals = new Map<string, { decision: 'pending' | 'approved' | 'denied' }>(); // by poll_token
   nextAccountId = 1;
   nextIdentityId = 1;
   nextKeyRowId = 1;
@@ -76,6 +77,12 @@ function makeAdapter(db: FakeDb): PostgresAdapter {
   // PoolClient stub that supports the queries inside the transaction.
   const client = {
     async query(text: string, params: ReadonlyArray<unknown> = []) {
+      // SPEC §2.9 owner-approval lookup by poll_token (deny gate).
+      if (/SELECT decision FROM agent_recovery_approvals/.test(text)) {
+        const poll_token = params[0] as string;
+        const row = db.recoveryApprovals.get(poll_token);
+        return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
+      }
       // SELECT session by nonce
       if (/SELECT \* FROM agent_registration_sessions/.test(text) && /nonce = \$1/.test(text)) {
         const nonce = params[0] as string;
@@ -498,6 +505,83 @@ describe('callback (SPEC §2.2.2)', () => {
     expect(out.status).toBe('success');
     expect(db.identities.get('id-r')!.status).toBe('active');
     expect(out.is_first_key).toBe(false); // recover is not first key
+  });
+
+  it('SPEC §2.9: kind=recover with owner_approval=denied refuses to issue a key', async () => {
+    // Set up a recovery scenario the same as Case C, but with a
+    // pre-decided 'denied' approval row. /callback must fail the
+    // session — never issue a key — instead of ignoring the owner's
+    // verdict.
+    db.accounts.set('acc-deny', { id: 'acc-deny', status: 'active', tier: 'cold' });
+    db.identities.set('id-deny', {
+      id: 'id-deny',
+      account_id: 'acc-deny',
+      provider: 'github_app',
+      subject: '12345',
+      audience: 'Iv1.abcdef',
+      status: 'revoked',
+      revocation_source: 'webhook',
+    });
+    const poll_token = 'pkr_' + 'd'.repeat(43);
+    seedSession({
+      poll_token,
+      kind: 'recover',
+      target_account_id: 'acc-deny',
+    });
+    db.recoveryApprovals.set(poll_token, { decision: 'denied' });
+
+    const keysBefore = db.keys.size;
+    const out = await callback(
+      { provider: 'github_app', state: 'NONCE', code: 'CODE' },
+      {
+        postgres: pg,
+        kms,
+        identity_providers: [provider],
+        request_context: { ip_hash: Buffer.alloc(32), user_agent: 'test' },
+      },
+    );
+
+    expect(out.status).toBe('failed');
+    if (out.status !== 'failed') return;
+    expect(out.reason).toBe('owner_denied_recovery');
+    // No key was issued.
+    expect(db.keys.size).toBe(keysBefore);
+    // Session was failed.
+    const sess = db.sessions.get(poll_token);
+    expect(sess?.status).toBe('failed');
+    expect(sess?.status_message).toBe('owner_denied_recovery');
+  });
+
+  it('SPEC §2.9: recover with no owner_approval row proceeds normally', async () => {
+    // No agent_recovery_approvals row → deny gate doesn't fire →
+    // recovery succeeds (Case C re-activation path).
+    db.accounts.set('acc-no-appr', { id: 'acc-no-appr', status: 'active', tier: 'cold' });
+    db.identities.set('id-no-appr', {
+      id: 'id-no-appr',
+      account_id: 'acc-no-appr',
+      provider: 'github_app',
+      subject: '12345',
+      audience: 'Iv1.abcdef',
+      status: 'revoked',
+      revocation_source: 'webhook',
+    });
+    seedSession({
+      poll_token: 'pkr_' + 'n'.repeat(43),
+      kind: 'recover',
+      target_account_id: 'acc-no-appr',
+    });
+    // Deliberately no recoveryApprovals entry.
+    const out = await callback(
+      { provider: 'github_app', state: 'NONCE', code: 'CODE' },
+      {
+        postgres: pg,
+        kms,
+        identity_providers: [provider],
+        request_context: { ip_hash: Buffer.alloc(32), user_agent: 'test' },
+      },
+    );
+    expect(out.status).toBe('success');
+    expect(db.identities.get('id-no-appr')!.status).toBe('active');
   });
 
   it('SPEC §2.4: kind=revalidate refreshes last_revalidated_at and stores NO sealed payload', async () => {
