@@ -148,7 +148,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Test summary at HEAD
 
-- **Unit tests**: 320 passing across 43 suites, ~930 ms wall (includes
+- **Unit tests**: 323 passing across 44 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
 - **Integration**: 83 passing against real Postgres 16 + Redis 7
@@ -392,3 +392,18 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
      Regression integration test in `audit-chain.int.test.ts`
      (with `SET TIME ZONE 'America/Los_Angeles'`) fails before
      the migration and passes after.
+  18. **§6.4.2 outbox starvation** — `flushAuditOutbox`'s
+     working SELECT was `WHERE flushed_at IS NULL ORDER BY
+     created_at ASC LIMIT batch_size`. Stuck rows (attempts ≥
+     max_attempts) passed the filter and consumed LIMIT slots.
+     Once `batch_size` rows piled up as stuck, the flusher's
+     entire pass would hit the stuck guard and continue, never
+     reaching newer outbox rows. RT-39 silent: a sustained S3
+     outage past the per-row retry budget would, after a
+     transient blip later, leave the new rows unflushed
+     forever. Fix splits the working SELECT (`attempts <
+     max_attempts`) from a separate stuck-row SELECT used only
+     for alerting; new outbox writes drain even when the queue
+     is dominated by stuck rows. Three-test unit harness
+     (one fresh + N stuck) demonstrates the bug pre-fix and
+     the fix post-fix.

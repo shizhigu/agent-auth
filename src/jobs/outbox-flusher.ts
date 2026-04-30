@@ -47,27 +47,42 @@ export async function flushAuditOutbox(
   const batch_size = deps.batch_size ?? 100;
   const max_attempts = deps.max_attempts ?? 10;
 
+  // Stuck rows (attempts >= max_attempts) MUST be excluded from the working
+  // SELECT — otherwise once `batch_size` rows are stuck, they fill every
+  // slot of the LIMIT and new outbox writes never get drained. We still
+  // surface them for SRE visibility via a separate query below.
   const rows = await deps.postgres.query<OutboxRow>(
     `SELECT id::text AS id, event_id::text AS event_id, payload, attempts, created_at
        FROM agent_audit_outbox
-      WHERE flushed_at IS NULL
+      WHERE flushed_at IS NULL AND attempts < $2
       ORDER BY created_at ASC
       LIMIT $1`,
-    [batch_size],
+    [batch_size, max_attempts],
   );
+
+  // Surface stuck rows independently. Capped at 100 per pass so a massive
+  // backlog doesn't generate millions of alerts; downstream SRE tooling
+  // de-duplicates by event_id.
+  const stuck_rows = await deps.postgres.query<{ id: string; event_id: string; attempts: number }>(
+    `SELECT id::text AS id, event_id::text AS event_id, attempts
+       FROM agent_audit_outbox
+      WHERE flushed_at IS NULL AND attempts >= $1
+      ORDER BY id ASC
+      LIMIT 100`,
+    [max_attempts],
+  );
+  let stuck = 0;
+  for (const sr of stuck_rows.rows) {
+    stuck++;
+    deps.onAlert?.('audit_outbox_stuck', {
+      event_id: sr.event_id,
+      attempts: sr.attempts,
+    });
+  }
 
   let flushed = 0;
   let failed = 0;
-  let stuck = 0;
   for (const row of rows.rows) {
-    if (row.attempts >= max_attempts) {
-      stuck++;
-      deps.onAlert?.('audit_outbox_stuck', {
-        event_id: row.event_id,
-        attempts: row.attempts,
-      });
-      continue;
-    }
     // node-pg returns JSONB columns as a parsed object, not a string.
     // String-shaped payloads (legacy / hand-rolled INSERT) are also
     // accepted via JSON.parse fallback.

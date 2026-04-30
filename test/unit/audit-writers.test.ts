@@ -81,11 +81,26 @@ class FakeDb {
       };
     }
     if (/SELECT id::text AS id, event_id::text AS event_id, payload, attempts, created_at/.test(text)) {
+      // Working SELECT: now also filters out attempts >= max_attempts so
+      // stuck rows don't starve fresh ones (SPEC §6.4.2 invariant).
       const limit = params[0] as number;
+      const max_attempts = params[1] as number;
       const rows = this.outbox
-        .filter((o) => o.flushed_at === null)
+        .filter((o) => o.flushed_at === null && o.attempts < max_attempts)
         .sort((a, b) => a.created_at.getTime() - b.created_at.getTime())
         .slice(0, limit);
+      return {
+        rows: rows as unknown as R[],
+        rowCount: rows.length,
+      };
+    }
+    if (/SELECT id::text AS id, event_id::text AS event_id, attempts/.test(text)) {
+      // Stuck SELECT.
+      const max_attempts = params[0] as number;
+      const rows = this.outbox
+        .filter((o) => o.flushed_at === null && o.attempts >= max_attempts)
+        .sort((a, b) => Number(a.id) - Number(b.id))
+        .slice(0, 100);
       return {
         rows: rows as unknown as R[],
         rowCount: rows.length,
