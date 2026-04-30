@@ -8,7 +8,7 @@
  * the AppRole whitelist.
  */
 import { describe, it, expect } from 'vitest';
-import { PostgresAdapter, type PostgresAdapterConfig } from '../../src/storage/postgres-adapter.js';
+import { PostgresAdapter, type AppRole } from '../../src/storage/postgres-adapter.js';
 
 describe('PostgresAdapter constructor (SPEC §3.16)', () => {
   // Minimal pool config — pg.Pool is lazy so no connection happens until
@@ -36,7 +36,7 @@ describe('PostgresAdapter constructor (SPEC §3.16)', () => {
         new PostgresAdapter({
           pool,
           // Bypass the TS gate the way a misconfigured SaaS could.
-          role: evil as unknown as PostgresAdapterConfig['role'],
+          role: evil as unknown as AppRole,
         }),
     ).toThrow(/role must be one of/);
   });
