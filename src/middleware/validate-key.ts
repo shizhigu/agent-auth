@@ -134,27 +134,47 @@ export async function validateKey(
     await deps.barrier_check();
   }
 
-  // 1. Authoritative epoch.
-  const currentEpoch = await deps.redis.getAuthoritativeEpoch();
+  // 1. Authoritative epoch. SPEC RT-26: "Validation falls through to
+  //    Postgres on epoch mismatch or Redis unavailability." If Redis
+  //    is unreachable we set currentEpoch=0 and skip the cache layer
+  //    so the request is served straight from Postgres. RT-3 caps the
+  //    visible impact ("worst case 30s stale auth") via the local
+  //    cache TTL — no correctness regression vs. a healthy Redis.
+  let currentEpoch = 0;
+  let redis_available = true;
+  try {
+    currentEpoch = await deps.redis.getAuthoritativeEpoch();
+  } catch {
+    redis_available = false;
+  }
 
   // 2. Local cache.
-  const localHit = deps.localCache.get(parsed.key_id);
-  if (localHit && localHit.cached_epoch === currentEpoch) {
-    return validateAgainstCache(localHit, parsed.secret, deps.kms, now);
+  if (redis_available) {
+    const localHit = deps.localCache.get(parsed.key_id);
+    if (localHit && localHit.cached_epoch === currentEpoch) {
+      return validateAgainstCache(localHit, parsed.secret, deps.kms, now);
+    }
   }
 
   // 3. Redis cache.
-  const redisRaw = await deps.redis.get(KEY_PREFIX_KEY + parsed.key_id);
-  if (redisRaw) {
-    let entry: KeyCache | null = null;
+  if (redis_available) {
+    let redisRaw: string | null = null;
     try {
-      entry = decodeKeyCache(redisRaw);
+      redisRaw = await deps.redis.get(KEY_PREFIX_KEY + parsed.key_id);
     } catch {
-      entry = null; // malformed entry — treat as miss
+      redisRaw = null; // a flaky GET also drops us to Postgres.
     }
-    if (entry && entry.cached_epoch === currentEpoch) {
-      deps.localCache.set(parsed.key_id, entry);
-      return validateAgainstCache(entry, parsed.secret, deps.kms, now);
+    if (redisRaw) {
+      let entry: KeyCache | null = null;
+      try {
+        entry = decodeKeyCache(redisRaw);
+      } catch {
+        entry = null; // malformed entry — treat as miss
+      }
+      if (entry && entry.cached_epoch === currentEpoch) {
+        deps.localCache.set(parsed.key_id, entry);
+        return validateAgainstCache(entry, parsed.secret, deps.kms, now);
+      }
     }
   }
 
@@ -218,14 +238,19 @@ export async function validateKey(
 
   // 5. Populate caches (best-effort; ignore Redis errors so a Redis outage
   //    does not block validation — Postgres has already authoritatively
-  //    decided. Logging is added in M5 alongside metrics.)
-  try {
-    await deps.redis.set(KEY_PREFIX_KEY + parsed.key_id, encodeKeyCache(entry), {
-      ex_seconds: deps.redis_cache_ttl_seconds,
-    });
-  } catch {
-    // ignore
+  //    decided. Skip the Redis SET entirely when we already know Redis
+  //    is unreachable to avoid pointless wait/log volume during outages.
+  if (redis_available) {
+    try {
+      await deps.redis.set(KEY_PREFIX_KEY + parsed.key_id, encodeKeyCache(entry), {
+        ex_seconds: deps.redis_cache_ttl_seconds,
+      });
+    } catch {
+      // ignore — best-effort.
+    }
   }
+  // Local cache is always written so within-process repeats don't re-hit
+  // Postgres during a Redis outage. RT-3 caps the staleness via TTL.
   deps.localCache.set(parsed.key_id, entry);
 
   return validateAgainstCache(entry, parsed.secret, deps.kms, now);

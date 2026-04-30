@@ -148,7 +148,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Test summary at HEAD
 
-- **Unit tests**: 324 passing across 44 suites, ~930 ms wall (includes
+- **Unit tests**: 326 passing across 44 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
 - **Integration**: 83 passing against real Postgres 16 + Redis 7
@@ -420,3 +420,17 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
      pad_ token correctly. Fix: kinds are now an array per
      endpoint — registration→[register, add_key], recover→
      [recover]. Unit regression confirms pad_ → completed.
+  20. **RT-26 redis-down validation 500** — `validateKey`
+     awaited `redis.getAuthoritativeEpoch()` and `redis.get(...)`
+     with no try/catch. A complete Redis outage made every
+     authenticated call 500 even though Postgres was healthy —
+     direct violation of RT-26 ("Validation falls through to
+     Postgres on epoch mismatch or Redis unavailability") and
+     RT-3 ("Cache only; worst case 30s stale auth"). Fix wraps
+     both Redis reads in try/catch; on failure we set
+     `redis_available=false`, skip cache layers, and serve from
+     Postgres directly. Local-cache writes still happen so a
+     repeat in-process call during the outage can hit local
+     cache (RT-3-bounded staleness). Two unit regressions
+     simulate getAuthoritativeEpoch failure and redis.get
+     failure; both fail before the patch and pass after.

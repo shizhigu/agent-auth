@@ -295,6 +295,46 @@ describe('validateKey (SPEC §5.3.3)', () => {
     // No throw — happy path under rotation.
   });
 
+  it('RT-26: getAuthoritativeEpoch failure falls through to Postgres (does not 500)', async () => {
+    // SPEC RT-26 mandates "Validation falls through to Postgres on epoch
+    // mismatch or Redis unavailability." A complete Redis outage means
+    // getAuthoritativeEpoch() throws — the lib must still serve.
+    const flaky = new Proxy(redis, {
+      get(target, prop, receiver) {
+        if (prop === 'getAuthoritativeEpoch') {
+          return async () => {
+            throw new Error('redis-down');
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    deps = { ...deps, redis: flaky as typeof redis };
+    const ctx = await validateKey(presentedKey(), deps);
+    expect(ctx.account_id).toBe('acc-1');
+    // Postgres was hit since cache is unreachable.
+    expect(pg.callCount).toBe(1);
+  });
+
+  it('RT-26: redis.get(KEY_PREFIX_KEY) failure falls through to Postgres', async () => {
+    // Even when getAuthoritativeEpoch succeeds, a flaky redis.get on the
+    // per-key cache lookup must not block validation.
+    const flaky = new Proxy(redis, {
+      get(target, prop, receiver) {
+        if (prop === 'get') {
+          return async () => {
+            throw new Error('redis-down');
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    deps = { ...deps, redis: flaky as typeof redis };
+    const ctx = await validateKey(presentedKey(), deps);
+    expect(ctx.account_id).toBe('acc-1');
+    expect(pg.callCount).toBe(1);
+  });
+
   it('does not blow up when Redis is unavailable for SET (best-effort cache write)', async () => {
     // Wrap the in-memory redis with a proxy that throws on `set`. All other
     // methods pass through to the real adapter (so the GET that precedes the
