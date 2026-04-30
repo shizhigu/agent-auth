@@ -35,9 +35,9 @@
 | | Status | Plan |
 |---|---|---|
 | Published on npm (`agent-auth` package) | **No** — install today via `git clone && npm run build` | v0.2 |
-| Agent-side SDK (`@vouch/client`) | **No** — agents currently implement PKCE + sealed-box decrypt + bearer-key auto-rotation themselves | v0.2 |
+| Agent-side SDK (`@vouch/client`) | **Dev preview** — lives in [`packages/client/`](packages/client/) (not yet on npm) | v0.2 |
 | CLI scaffolder (`npx create-vouch-app`) | **No** | v0.2 |
-| Reference end-to-end demo (SaaS + agent) | **No** — only SaaS-side examples | v0.2 |
+| Reference end-to-end demo (SaaS + agent) | **Yes** — runnable in `demo/` (Postgres + Redis via docker compose, no AWS / GitHub OAuth needed) | v0.2 |
 | Docs site (`vouch.dev`) | **No** — README + SPEC only | v0.2 |
 | Multi-provider identity (Google / GitLab / generic OIDC) | **No** — GitHub-only at v0.1 | v0.3 |
 | Migration runner (`vouch migrate up`) | **No** — apply `schema/migrations/*.sql` manually | v0.3 |
@@ -328,9 +328,10 @@ The server-side engine is done; the next milestones are about **developer experi
 ### v0.2 — DX completeness (next ~4 weeks)
 
 - [ ] **`agent-auth` published on npm** — currently dev-only
-- [ ] **`@vouch/client`** — agent-side SDK that wraps PKCE generation, sealed-box decrypt, polling, and bearer-key auto-rotation in **5 lines** of agent code
+- [x] **`@vouch/client` dev preview** — agent-side SDK lives in [`packages/client/`](packages/client/); 5-line `register()` happy path; auto-rotation deferred to v0.3
+- [ ] **`@vouch/client` published on npm**
 - [ ] **`npx create-vouch-app`** — scaffolder with SaaS + agent templates ready to run
-- [ ] **Reference end-to-end demo** — Acme SaaS + a Claude Code / Cursor agent registering and calling APIs (deployable to fly.io / Railway in one command)
+- [x] **Reference end-to-end demo** — see [`demo/`](demo/) (SaaS + agent runnable via `docker compose up && npm run saas && npm run agent`)
 - [ ] **Docs site at `vouch.dev`** — VitePress / Nextra with copy-paste recipes
 - [ ] OTel tracing (`src/observability/tracing.ts`)
 - [ ] Idempotency middleware sugar (wraps `tierBIdempotent` for HTTP routes)

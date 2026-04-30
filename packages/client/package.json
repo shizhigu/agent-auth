@@ -1,0 +1,57 @@
+{
+  "name": "@vouch/client",
+  "version": "0.0.0-dev",
+  "description": "Vouch — agent-side SDK. Wraps the registration flow (PKCE, sealed-box, polling) and bearer-key handling so an agent can authenticate in 5 lines.",
+  "keywords": [
+    "vouch",
+    "ai-agents",
+    "agent-auth",
+    "client",
+    "sdk",
+    "authentication",
+    "api-keys",
+    "libsodium",
+    "pkce"
+  ],
+  "license": "MIT",
+  "author": "Agentic Flow LLC",
+  "homepage": "https://github.com/shizhigu/agent-auth/tree/main/packages/client#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shizhigu/agent-auth.git",
+    "directory": "packages/client"
+  },
+  "bugs": {
+    "url": "https://github.com/shizhigu/agent-auth/issues"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "libsodium-wrappers": "0.7.15"
+  },
+  "devDependencies": {
+    "@types/libsodium-wrappers": "^0.7.14",
+    "@types/node": "^20.14.10",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  }
+}
