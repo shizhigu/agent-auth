@@ -106,10 +106,24 @@ export class PostgresAdapter {
     params?: ReadonlyArray<unknown>,
     options?: QueryOptions,
   ): Promise<{ rows: R[]; rowCount: number }> {
+    if (options?.statement_timeout_ms !== undefined) {
+      // SET LOCAL only applies inside a transaction. Wrap so the timeout is
+      // scoped to the single statement and unaffected by other pool users.
+      const ms = Math.max(1, Math.floor(options.statement_timeout_ms));
+      return this.withClient(async (client) => {
+        await client.query('BEGIN');
+        try {
+          await client.query(`SET LOCAL statement_timeout = ${ms}`);
+          const res = await client.query<R>(text, params as unknown[]);
+          await client.query('COMMIT');
+          return { rows: res.rows, rowCount: res.rowCount ?? 0 };
+        } catch (err) {
+          await client.query('ROLLBACK').catch(() => undefined);
+          throw err;
+        }
+      });
+    }
     return this.withClient(async (client) => {
-      if (options?.statement_timeout_ms !== undefined) {
-        await client.query(`SET LOCAL statement_timeout = ${Math.max(1, Math.floor(options.statement_timeout_ms))}`);
-      }
       const res = await client.query<R>(text, params as unknown[]);
       return { rows: res.rows, rowCount: res.rowCount ?? 0 };
     });

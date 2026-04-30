@@ -145,8 +145,8 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 - **Unit tests**: 262 passing across 35 suites, ~880 ms wall (includes
   fast-check property tests on idempotency state machine + canonicalRequestHash).
-- **Integration**: 16 passing against real Postgres 16 + Redis 7
-  (testcontainers, ~22 s):
+- **Integration**: 31 passing against real Postgres 16 + Redis 7
+  (testcontainers, ~27 s):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
     fallback, invalid_secret rejection.
   - revoke.int (2): Tier B revoke writes log + bumps epoch + invalidates
@@ -169,6 +169,14 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
     idempotency_admin_override audit event in the same txn; §3.13
     terminal-row immutability — request_hash cannot be UPDATEd after
     completed (errcode 23514).
+  - postgres-adapter.int (5): SET ROLE pinning per checkout; transaction
+    commit on success; transaction rollback on throw (intentional error
+    leaves DB unchanged); statement_timeout cancels a long pg_sleep;
+    queryOne throws on multi-row result.
+  - distributed.int (5): §3.12 epoch monotonicity refuses non-strict
+    UPDATE (errcode 23514); bumpEpochInTx increments Postgres + pushes
+    to Redis; barrier same-timeline LSN regression refused; barrier
+    timeline regression refused; barrier reset on new timeline allowed.
 - **Chaos**: 14 passing (~10 s):
   - redis-partition (2): RT-25 healthy + partitioned-Redis no-false-accept
     invariant via testcontainers stop().
