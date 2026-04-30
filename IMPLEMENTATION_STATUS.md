@@ -148,10 +148,10 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Test summary at HEAD
 
-- **Unit tests**: 316 passing across 42 suites, ~930 ms wall (includes
+- **Unit tests**: 320 passing across 43 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
-- **Integration**: 81 passing against real Postgres 16 + Redis 7
+- **Integration**: 82 passing against real Postgres 16 + Redis 7
   (testcontainers, ~80 s — healthz unhealthy-path waits ioredis retries):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
     fallback, invalid_secret rejection.
@@ -364,3 +364,14 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
      `expireRotationGrace` (hygiene only — validateKey already
      rejects grace-expired rows with 401, so unflipped rows are
      safe).
+  16. **subscribePattern cross-talk** —
+     `IoredisAdapter.subscribePattern` installed a fresh
+     `pmessage` listener per call, but ioredis fires `pmessage`
+     for ANY active pattern subscription. Two subscribePattern()
+     calls (e.g., `:invalidate:key:*` and `:invalidate:account:*`)
+     each had their callback fire for EVERY message, regardless
+     of which pattern matched. SaaS apps subscribing both
+     namespaces would mis-route invalidations + log labels.
+     Fix filters by ioredis's first arg (matched pattern) inside
+     the listener. Integration test against real Redis confirms
+     each callback receives only its own pattern's messages.
