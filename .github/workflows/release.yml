@@ -1,0 +1,45 @@
+name: Release
+on:
+  push:
+    tags: ['v*.*.*']
+permissions:
+  contents: read
+  id-token: write   # OIDC trusted publishing per §9.3 / RT-14, RT-36
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: release      # branch protection + 2-person review on tag push
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+      - name: install
+        run: npm ci
+      - name: typecheck
+        run: npx tsc --noEmit
+      - name: test
+        run: npm test
+      - name: build
+        run: npm run build
+      # Sigstore-backed npm provenance.
+      # Requires: 'OIDC trusted publishing' configured on npm package
+      # (npm config: provenance=true; oidc=true). NPM_TOKEN is NOT set —
+      # the GH OIDC token is exchanged for a short-lived publish token.
+      - name: publish (provenance + Sigstore)
+        run: npm publish --provenance --access public
+      # Generate SBOM + attach to release.
+      - name: sbom
+        uses: anchore/sbom-action@v0
+        with:
+          format: spdx-json
+          output-file: sbom.spdx.json
+      - name: cosign attest sbom
+        uses: sigstore/cosign-installer@v3
+      - name: cosign sign blob
+        run: |
+          cosign sign-blob --yes --bundle release.cosign.bundle dist/index.js

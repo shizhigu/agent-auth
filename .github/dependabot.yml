@@ -1,0 +1,14 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    # Manual review required for any new transitive dep per RT-35.
+    reviewers:
+      - shizhigu
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly

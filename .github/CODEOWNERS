@@ -1,0 +1,12 @@
+# SPEC.md is the contract — change reviews require security + arch sign-off.
+SPEC.md @shizhigu
+
+# Crypto + audit paths are highest-impact.
+src/crypto/        @shizhigu
+src/audit/         @shizhigu
+src/admin/         @shizhigu
+src/distributed/   @shizhigu
+src/middleware/validate-key.ts @shizhigu
+
+# CI / release pipeline guards the supply chain.
+.github/workflows/ @shizhigu

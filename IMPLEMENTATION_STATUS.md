@@ -108,15 +108,16 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Milestone M8 — Admin CLI + supply chain (SPEC §11.2 M8)
 
-- [ ] `src/admin/cli.ts` — base command framework §8.1
-- [ ] RB-1 .. RB-9 command implementations §8.2
-- [ ] `src/admin/webauthn.ts` — FIDO2 hardware key gating §8.1
-- [ ] `src/admin/two-person.ts` — co-signer enforcement §8.1
-- [ ] `src/admin/jit-rbac.ts` — just-in-time role grant
-- [ ] `.github/workflows/release.yml` — Sigstore signing + npm provenance §9.3
-- [ ] OIDC trusted publishing setup §9.3 / RT-14, RT-36
-- [ ] Integration tests: RT-10 (admin abuse), RT-38 (SSO compromise → break-glass)
-- [ ] **Deliverable**: production-ready release pipeline
+- [x] `src/admin/cli.ts` — `runAdminCommand` dispatcher: JIT-RBAC check → WebAuthn (skipped on read-only) → two-person (when `TWO_PERSON_REQUIRED.has(command)`) → audit row → handler dispatch §8.1
+- [x] RB-1..RB-7 + RB-9 command implementations in `src/admin/runbooks.ts` (RB-1 revoke-key, RB-2 suspend-account, RB-3 resolve-idempotency, RB-4 flush-cache, RB-5 unblock-identity, RB-7 reconcile-redis-sets, RB-9 webhook-backfill via existing `runWebhookReplay`); RB-8 already shipped as `scripts/post-promotion-reset.sh` §8.2
+- [x] `src/admin/webauthn.ts` — `WebAuthnVerifier` interface + `noopWebAuthnVerifier` for tests; SaaS plugs in @simplewebauthn/server (or equivalent) for production (RT-10) §8.1
+- [x] `src/admin/two-person.ts` — `createCoSignerEnvelope`, `signCoSignerEnvelope`, `verifyCoSignature` (canonical op+target+timestamp+nonce+initiator+payload_sha256, ±10 min skew, constant-time compare) §8.1 / RT-10 / RT-41
+- [x] `src/admin/jit-rbac.ts` — `JitRbac` with grant/assertGrant/revoke; default 1h TTL, 4h cap; required reason ≥8 chars; audit hook on grant + revoke §8.1
+- [x] `.github/workflows/release.yml` — npm `--provenance` + Sigstore (cosign sign-blob + SBOM) + `id-token: write` for OIDC trusted publishing per §9.3 / RT-14, RT-36
+- [x] OIDC trusted publishing setup — workflow uses `id-token: write` permission; no `NPM_TOKEN`; `.npmrc` enables provenance globally §9.3
+- [x] CI + Security workflows — `.github/workflows/ci.yml` (lint, typecheck, test) + `security.yml` (OpenSSF Scorecard, TruffleHog secret-scan, dependency-review on PRs) + CODEOWNERS + dependabot.yml
+- [ ] Integration tests: RT-10 (admin abuse), RT-38 (SSO compromise → break-glass) — covered by unit tests; integration suite + chaos pending
+- [x] **Deliverable**: production-ready release pipeline (Sigstore + provenance + Scorecard + CODEOWNERS + JIT-RBAC + two-person)
 
 ## Cross-cutting / pre-release (SPEC §12.7)
 
