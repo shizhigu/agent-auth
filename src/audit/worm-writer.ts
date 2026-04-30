@@ -97,7 +97,7 @@ export async function writeAuditToWorm(
     await pg
       .query(
         `INSERT INTO agent_audit_outbox (event_id, payload, attempts, last_error)
-         VALUES ($1::bigint, $2, 0, $3)`,
+         VALUES ($1::bigint, $2::jsonb, 0, $3)`,
         [event.id, bodyJson, error_msg.slice(0, 500)],
       )
       .catch(() => undefined);

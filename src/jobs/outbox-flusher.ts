@@ -34,7 +34,9 @@ export interface OutboxFlushResult {
 interface OutboxRow {
   id: string;
   event_id: string;
-  payload: string;
+  /** node-pg returns JSONB columns as parsed JS values. The flusher
+   *  re-stringifies for the WORM PutObject body. */
+  payload: unknown;
   attempts: number;
   created_at: Date;
 }
@@ -66,9 +68,21 @@ export async function flushAuditOutbox(
       });
       continue;
     }
+    // node-pg returns JSONB columns as a parsed object, not a string.
+    // String-shaped payloads (legacy / hand-rolled INSERT) are also
+    // accepted via JSON.parse fallback.
     let body: { ts: string };
+    let bodyJson: string;
     try {
-      body = JSON.parse(row.payload) as { ts: string };
+      if (typeof row.payload === 'string') {
+        bodyJson = row.payload;
+        body = JSON.parse(row.payload) as { ts: string };
+      } else if (row.payload && typeof row.payload === 'object') {
+        body = row.payload as { ts: string };
+        bodyJson = JSON.stringify(row.payload);
+      } else {
+        throw new Error('payload is neither string nor object');
+      }
     } catch {
       // Corrupt payload: bump attempts and continue.
       await deps.postgres
@@ -88,7 +102,7 @@ export async function flushAuditOutbox(
     try {
       await deps.putter.putObject({
         Key: key,
-        Body: row.payload,
+        Body: bodyJson,
         ContentType: 'application/json',
         ServerSideEncryption: 'aws:kms',
         SSEKMSKeyId: deps.cfg.kms_key_id,

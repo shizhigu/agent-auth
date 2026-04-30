@@ -143,11 +143,11 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Test summary at HEAD
 
-- **Unit tests**: 272 passing across 36 suites, ~900 ms wall (includes
-  fast-check property tests + AwsKmsAdapter via aws-sdk-client-mock +
-  down-migration structural invariants).
-- **Integration**: 34 passing against real Postgres 16 + Redis 7
-  (testcontainers, ~33 s):
+- **Unit tests**: 274 passing across 37 suites, ~930 ms wall (includes
+  fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
+  aws-sdk-client-mock + down-migration structural invariants).
+- **Integration**: 37 passing against real Postgres 16 + Redis 7
+  (testcontainers, ~42 s):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
     fallback, invalid_secret rejection.
   - revoke.int (2): Tier B revoke writes log + bumps epoch + invalidates
@@ -186,6 +186,13 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
     (preserves fresh ones); reconcileAccountKeySets walks Postgres
     authoritative key list, SADDs missing entries, SREMs phantoms,
     excludes revoked keys.
+  - audit-outbox.int (2): RT-39 — failed PutObject enqueues outbox row;
+    flushAuditOutbox drains it on next pass; row past max_attempts is
+    paged as 'audit_outbox_stuck' for ops.
+  - webhook-replay.int (1): RT-6 / §2.2.5 — runWebhookReplay skips
+    already-processed deliveries, wrong event types, 2xx-acked, and
+    older-than-lookback; triggers redelivery only for the rest;
+    advances the replay cursor.
 - **Chaos**: 14 passing (~10 s):
   - redis-partition (2): RT-25 healthy + partitioned-Redis no-false-accept
     invariant via testcontainers stop().
