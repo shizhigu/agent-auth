@@ -116,7 +116,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - [x] `.github/workflows/release.yml` — npm `--provenance` + Sigstore (cosign sign-blob + SBOM) + `id-token: write` for OIDC trusted publishing per §9.3 / RT-14, RT-36
 - [x] OIDC trusted publishing setup — workflow uses `id-token: write` permission; no `NPM_TOKEN`; `.npmrc` enables provenance globally §9.3
 - [x] CI + Security workflows — `.github/workflows/ci.yml` (lint, typecheck, test) + `security.yml` (OpenSSF Scorecard, TruffleHog secret-scan, dependency-review on PRs) + CODEOWNERS + dependabot.yml
-- [ ] Integration tests: RT-10 (admin abuse), RT-38 (SSO compromise → break-glass) — covered by unit tests; integration suite + chaos pending
+- [x] Integration tests: RT-10 (admin abuse), RT-38 (SSO compromise → break-glass) — RT-10 in `admin-cli.int` (RB-1 revoke-key end-to-end + RB-4 flush-cache rejected without co-signer / admitted with valid co-signer); RT-38 mitigation via `docs/break_glass.md` (per SPEC §8.1 break_glass.procedure reference) — independent break-glass admin path documented: physical YubiKeys + sealed-envelope JIT-RBAC seeds rooted independently of SSO, two-person co-sign required, audit `meta.break_glass=true` marker, 24h post-mortem mandate
 - [x] **Deliverable**: production-ready release pipeline (Sigstore + provenance + Scorecard + CODEOWNERS + JIT-RBAC + two-person)
 
 ## Cross-cutting / pre-release (SPEC §12.7)

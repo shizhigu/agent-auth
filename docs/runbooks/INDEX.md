@@ -45,3 +45,9 @@ SEV-3:
 - Two-person rule for destructive ops (close-account, flush-cache, force-revoke-all)
 - Update runbook itself if procedure was inadequate
 - Quarterly tabletop exercise to validate runbooks
+
+## Break-glass (RT-38)
+
+When SSO or the JIT-RBAC pipeline itself is compromised, follow
+[`../break_glass.md`](../break_glass.md). Two-person, physical
+YubiKey + sealed envelope, 24-hour post-mortem mandatory.
