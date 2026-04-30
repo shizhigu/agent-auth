@@ -253,8 +253,18 @@ export class IoredisAdapter implements RedisAdapter {
     cb: (channel: string, message: string) => void,
   ): Promise<void> {
     await this.cfg.subscriber.psubscribe(pattern);
-    this.cfg.subscriber.on('pmessage', (_pattern, channel, message) => {
-      cb(channel, message);
+    // ioredis fires the 'pmessage' event for ANY active pattern subscription
+    // on this connection, not just the one being subscribed here. Without
+    // the pattern guard, two subscribePattern() calls (e.g., one for
+    // `agent-auth:invalidate:key:*` and one for `agent-auth:invalidate:
+    // account:*`) would each have their callback invoked for every message,
+    // including ones that don't match their own pattern. Filter by the
+    // first arg (the matched pattern, ioredis convention) so each
+    // callback only sees its own messages.
+    this.cfg.subscriber.on('pmessage', (matchedPattern, channel, message) => {
+      if (matchedPattern === pattern) {
+        cb(channel, message);
+      }
     });
   }
 

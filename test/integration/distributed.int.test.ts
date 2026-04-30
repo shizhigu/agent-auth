@@ -122,4 +122,36 @@ describe('integration: distributed primitives (SPEC §3.12 / §5.3.2 / §4.4.2)'
     const after = await readAuthoritativeBarrier(fix.postgres);
     expect(after.timeline_id).toBe(6);
   });
+
+  it('subscribePattern dispatches to ONLY the matching subscription (no cross-talk)', async () => {
+    // Two subscriptions on the same Redis connection: one for key
+    // invalidation, one for account invalidation. Without the
+    // pattern-guard fix the same listener would fire for both — each
+    // callback receiving messages meant for the other. With the fix,
+    // each callback sees only its own pattern's messages.
+    const keyMsgs: Array<{ ch: string; msg: string }> = [];
+    const accMsgs: Array<{ ch: string; msg: string }> = [];
+    await fix.redis.subscribePattern(
+      'agent-auth:invalidate:key:*',
+      (ch, msg) => keyMsgs.push({ ch, msg }),
+    );
+    await fix.redis.subscribePattern(
+      'agent-auth:invalidate:account:*',
+      (ch, msg) => accMsgs.push({ ch, msg }),
+    );
+
+    // Publish on both channels.
+    await fix.redis.publish('agent-auth:invalidate:key:agk_xyz', 'k1');
+    await fix.redis.publish('agent-auth:invalidate:account:acc_abc', 'a1');
+
+    // Allow ioredis to deliver the pmessage events.
+    await new Promise<void>((r) => setTimeout(r, 100));
+
+    expect(keyMsgs).toEqual([
+      { ch: 'agent-auth:invalidate:key:agk_xyz', msg: 'k1' },
+    ]);
+    expect(accMsgs).toEqual([
+      { ch: 'agent-auth:invalidate:account:acc_abc', msg: 'a1' },
+    ]);
+  });
 });
