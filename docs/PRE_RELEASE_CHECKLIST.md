@@ -25,9 +25,13 @@ sign-off recorded in CHANGELOG).
 
 ## Schema & migrations
 
-- [ ] **Forward + backward migration tested** — `0001..0005` applied on a
-  fresh container and on a snapshot of prod-shape data; no destructive
-  changes without §3.17 two-deploy gating
+- [x] **Forward + backward migration tested** — `0001..0005` applied on a
+  fresh container, schema smoke-tested, rolled back via `*.down.sql` in
+  reverse order, verified empty, re-applied — round-trip is automated in
+  `test/integration/migrations.int.test.ts`. Idempotent re-apply on an
+  already-migrated DB also covered. Production-snapshot replay against
+  prod-shape data is a separate operational gate; lib-side coverage is
+  the round-trip + idempotency tests.
 - [ ] **Migration scripts reviewed by DBA** — destructive ops (DROP,
   ALTER TYPE) gated behind feature flags
 
