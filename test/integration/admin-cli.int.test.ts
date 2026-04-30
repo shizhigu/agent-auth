@@ -216,4 +216,72 @@ describe('integration: admin CLI runbooks (SPEC §8.1 / §8.2)', () => {
     );
     expect(Number(audit?.count)).toBeGreaterThanOrEqual(1);
   });
+
+  it('read-only handlers (list-accounts / show-account / list-keys / show-key) all dispatch and return live data', async () => {
+    const { key_id, account_id } = await seedKey('rb-readonly');
+    const jit = new JitRbac();
+    const grant = jit.grant({
+      admin_id: 'admin@saas',
+      role: 'agent_auth_admin',
+      reason: 'integration_readonly',
+    });
+    const deps = {
+      postgres: fix.postgres,
+      jit_rbac: jit,
+      webauthn: noopWebAuthnVerifier,
+      internal_secret: SECRET,
+      audit: { postgres: fix.postgres },
+      handlers: defaultRunbookHandlers({ redis: fix.redis, region: 'us-east-1' }),
+    };
+    const baseInput = {
+      admin_id: 'admin@saas',
+      jit_grant_id: grant.grant_id,
+      reason: 'integration_readonly',
+    };
+
+    // list-accounts: at least the seeded one is visible.
+    const list = (await runAdminCommand(
+      { ...baseInput, command: 'list-accounts', options: { limit: 200 } },
+      deps,
+    )) as { rows: Array<{ id: string }>; count: number };
+    expect(list.count).toBeGreaterThanOrEqual(1);
+    expect(list.rows.some((r) => r.id === account_id)).toBe(true);
+
+    // show-account: identity_count + active_key_count populated.
+    const show = (await runAdminCommand(
+      { ...baseInput, command: 'show-account', options: { account_id } },
+      deps,
+    )) as { account: { identity_count: number; active_key_count: number } };
+    expect(show.account.identity_count).toBeGreaterThanOrEqual(1);
+    expect(show.account.active_key_count).toBeGreaterThanOrEqual(1);
+
+    // list-keys (admin variant): by account, includes the seeded key.
+    const keys = (await runAdminCommand(
+      { ...baseInput, command: 'list-keys', options: { account_id } },
+      deps,
+    )) as { rows: Array<{ key_id: string }>; count: number };
+    expect(keys.count).toBeGreaterThanOrEqual(1);
+    expect(keys.rows.some((r) => r.key_id === key_id)).toBe(true);
+
+    // show-key: identity-joined fields surface.
+    const detail = (await runAdminCommand(
+      { ...baseInput, command: 'show-key', options: { key_id } },
+      deps,
+    )) as { key: { key_id: string; identity_provider: string } };
+    expect(detail.key.key_id).toBe(key_id);
+    expect(detail.key.identity_provider).toBe('github_app');
+
+    // All four wrote audit rows tagged admin_<command>.
+    const auditCounts = await admin.query<{ event_type: string; count: string }>(
+      `SELECT event_type, count(*)::text AS count FROM agent_audit_log
+        WHERE event_type IN ('admin_list-accounts','admin_show-account','admin_list-keys','admin_show-key')
+        GROUP BY event_type ORDER BY event_type`,
+    );
+    expect(auditCounts.rows.map((r) => r.event_type).sort()).toEqual([
+      'admin_list-accounts',
+      'admin_list-keys',
+      'admin_show-account',
+      'admin_show-key',
+    ]);
+  });
 });
