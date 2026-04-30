@@ -41,8 +41,11 @@ export interface GitHubAppProviderConfig {
   readonly client_id: string;
   /** GitHub App client secret (KMS-managed). */
   readonly client_secret: string;
-  /** Webhook signing secret (used by webhook handler in M4). */
+  /** Webhook signing secret (current). */
   readonly webhook_secret?: string;
+  /** Optional previous webhook secret accepted alongside `webhook_secret`
+   *  during a rotation window per RT-42. */
+  readonly webhook_secret_previous?: string;
   /** App private key PEM for App-JWT (revalidate + webhook replay polling). */
   readonly app_private_key_pem?: string;
   /** Default assurance level reported in Attestation (§2.2.1). */
@@ -226,12 +229,83 @@ export class GitHubAppProvider implements IdentityProvider {
   }
 
   async handleWebhook(
-    _headers: Record<string, string>,
-    _raw_body: Buffer,
+    headers: Record<string, string>,
+    raw_body: Buffer,
   ): Promise<ParsedWebhook> {
-    // Wired in M4. Stub here so the type matches IdentityProvider.
-    throw new AgentAuthError(500, 'internal_error', 'webhook handler not yet implemented');
+    if (!this.cfg.webhook_secret) {
+      throw new AgentAuthError(500, 'internal_error', 'webhook_secret_not_configured');
+    }
+    const sig = lookupHeader(headers, 'x-hub-signature-256');
+    const event_type = lookupHeader(headers, 'x-github-event');
+    const delivery = lookupHeader(headers, 'x-github-delivery');
+    if (!sig || !event_type || !delivery) {
+      throw new AgentAuthError(400, 'invalid_request', 'missing_webhook_headers');
+    }
+
+    // RT-42: dual-secret rotation window. Accept either current or previous
+    // webhook secret; constant-time compare of the hex digest.
+    const candidates: string[] = [this.cfg.webhook_secret];
+    if (this.cfg.webhook_secret_previous) {
+      candidates.push(this.cfg.webhook_secret_previous);
+    }
+    const ok = candidates.some((s) => verifyGithubSignature(raw_body, sig, s));
+    if (!ok) {
+      throw new AgentAuthError(401, 'invalid_request', 'invalid_signature');
+    }
+
+    let parsed: GitHubWebhookPayload;
+    try {
+      parsed = JSON.parse(raw_body.toString('utf8')) as GitHubWebhookPayload;
+    } catch {
+      throw new AgentAuthError(400, 'invalid_request', 'invalid_json');
+    }
+
+    const actions: WebhookAction[] = [];
+    if (
+      event_type === 'github_app_authorization' &&
+      parsed.action === 'revoked' &&
+      parsed.sender?.id !== undefined
+    ) {
+      actions.push({
+        type: 'revoke_identity',
+        subject: String(parsed.sender.id),
+        reason: 'user_revoked_app_access',
+      });
+    }
+    return {
+      event_id: delivery,
+      event_type,
+      actions,
+    };
   }
+}
+
+interface GitHubWebhookPayload {
+  readonly action?: string;
+  readonly sender?: { readonly id?: number; readonly login?: string };
+}
+
+function lookupHeader(headers: Record<string, string>, name: string): string | undefined {
+  // Case-insensitive lookup. Most Node frameworks already lowercase header keys
+  // but we don't trust callers to normalize.
+  const lc = name.toLowerCase();
+  for (const [k, v] of Object.entries(headers)) {
+    if (k.toLowerCase() === lc) return v;
+  }
+  return undefined;
+}
+
+import { createHmac, timingSafeEqual } from 'node:crypto';
+import type { WebhookAction } from '../../types.js';
+
+function verifyGithubSignature(body: Buffer, header_value: string, secret: string): boolean {
+  // GitHub format: 'sha256=<hex>'.
+  const m = /^sha256=([0-9a-f]{64})$/.exec(header_value.trim());
+  if (!m) return false;
+  const expected = m[1]!;
+  const computed = createHmac('sha256', secret).update(body).digest('hex');
+  if (computed.length !== expected.length) return false;
+  return timingSafeEqual(Buffer.from(computed, 'hex'), Buffer.from(expected, 'hex'));
 }
 
 // ---------------------------------------------------------------------------

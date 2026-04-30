@@ -63,12 +63,12 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Milestone M4 — Webhooks + reconciliation (SPEC §11.2 M4)
 
-- [ ] `src/routes/webhooks.ts` — HMAC verify FIRST, dedup INSERT §2.2.4
-- [ ] `src/identity/github-app/webhook.ts` — GitHub-specific event parsing §2.2.4
-- [ ] `src/jobs/webhook-replay.ts` — 3-day GitHub redelivery polling §2.2.5
-- [ ] Cascade identity-revoke → key-revoke pipeline §2.2.4
-- [ ] Integration tests: RT-6 (replay), RT-30 (spoof / order gap), RT-42 (secret rotation race)
-- [ ] **Deliverable**: GitHub revocations reach our system
+- [x] `src/routes/webhooks.ts` — framework-agnostic; HMAC verify FIRST (delegated to provider), atomic dedup `INSERT ... ON CONFLICT (id) DO NOTHING RETURNING (xmax=0)`, applies actions in Tier B txn, post-commit barrier + `invalidateKey` walk §2.2.4
+- [x] `src/identity/github-app/webhook.ts` — implemented as `GitHubAppProvider.handleWebhook` (constant-time HMAC, dual-secret rotation per RT-42, JSON parse, `revoke_identity` action for `github_app_authorization` action='revoked') §2.2.4
+- [x] `src/jobs/webhook-replay.ts` — `runWebhookReplay(deps)` paginates `/app/hook/deliveries`, skips delivered (2xx) and processed locally, triggers redelivery, updates `agent_webhook_replay_state` cursor + status + cap_hit metric §2.2.5
+- [x] Cascade identity-revoke → key-revoke pipeline (revoked identity ⇒ all active+rotating keys ⇒ epoch + log + cache invalidate; account suspended if no other primary identity remains) §2.2.4
+- [ ] Integration tests: RT-6 (replay), RT-30 (spoof / order gap), RT-42 (secret rotation race) — covered by unit tests; testcontainers suite lands with M5
+- [x] **Deliverable**: GitHub revocations reach our system (route + provider + cascade + replay job)
 
 ## Milestone M5 — Rate limiting + observability (SPEC §11.2 M5)
 
