@@ -64,9 +64,10 @@ sign-off recorded in CHANGELOG).
   - [x] RT-42 (webhook secret rotation) — unit + integration (dual-secret window)
   - [x] RT-44 (APM scrubbing) — unit (scrubber + metrics + logger label scrub)
   - [x] §3.5 trigger race resolution (rotation_inverse) — integration (23505 unique_violation)
-  - [ ] RT-15 (DoS), RT-43 (fail-closed amplification) — chaos suite (TODO)
-  - [ ] RT-18, RT-32, RT-34 (multi-region failover) — chaos suite (TODO)
-  - [ ] RT-1, RT-7, RT-8, RT-13, RT-22, RT-23, RT-24, RT-28, RT-33, RT-35, RT-37, RT-40 — security review still pending; tests added as v0.1.1 work.
+  - [x] RT-18, RT-32, RT-34 (multi-region failover) — chaos (timeline mismatch + replication-lag gates)
+  - [x] RT-22 (KMS unreachable) — chaos (validateKey fails closed; never silent accept)
+  - [ ] RT-15 (DoS), RT-43 (fail-closed amplification) — TODO
+  - [ ] RT-1, RT-7, RT-8, RT-13, RT-23, RT-24, RT-28, RT-33, RT-35, RT-37, RT-40 — security review still pending; tests added as v0.1.1 work.
 - [x] **Audit hash chain verifier** runs end-to-end against test data — unit
 - [ ] **30-day historical replay** of audit chain in staging
 - [ ] **DR drill on staging — RTO < 1h confirmed** — `scripts/dr-drill.sh`

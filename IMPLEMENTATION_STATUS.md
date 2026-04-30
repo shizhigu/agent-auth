@@ -169,8 +169,16 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
     idempotency_admin_override audit event in the same txn; §3.13
     terminal-row immutability — request_hash cannot be UPDATEd after
     completed (errcode 23514).
-- **Chaos**: 2 passing (~4 s) — RT-25 healthy + partitioned-Redis
-  no-false-accept invariant via testcontainers stop().
+- **Chaos**: 8 passing (~10 s):
+  - redis-partition (2): RT-25 healthy + partitioned-Redis no-false-accept
+    invariant via testcontainers stop().
+  - multi-region-failover (3): control passes when local IS the primary
+    (recovery=false); RT-32 / RT-34 timeline mismatch → 503
+    failover_in_progress; RT-18 replica behind authoritative barrier →
+    503 region_replication_stale.
+  - kms-unavailable (3): RT-22 control accepts with healthy KMS;
+    KMS-down with correct OR wrong secret never silently accepts —
+    validateKey surfaces an error path instead of returning AgentContext.
 - **Bench**: validation_cache_hit P50/P99 = 2.5 µs / 4.3 µs;
   validation_cache_miss_with_hmac P50/P99 = 5.0 µs / 8.9 µs.
 - **Typecheck**: clean (`tsc --noEmit`).
