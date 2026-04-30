@@ -165,7 +165,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Test summary at HEAD
 
-- **Unit tests**: 326 passing across 44 suites, ~930 ms wall (includes
+- **Unit tests**: 327 passing across 44 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
 - **Integration**: 87 passing against real Postgres 16 + Redis 7
@@ -481,3 +481,15 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
      pre-fix this was true), and a real cap-hit case
      (cap_hit true with onAlert). Also dropped the unused
      `hitWatermark` flag.
+  23. **§5.1.2 reconciler skips pending → failed transition** —
+     `reconcileUnknownIdempotency` flipped `unknown → failed` on
+     not_found but left `pending` rows alone (the in-code comment
+     said "use cap to do so"). Per SPEC §5.1.2, BOTH stale pending
+     and unknown rows whose resource is not_found should promote
+     to failed so retries see a cached `commit_lost` outcome
+     instead of getting blocked at 425 idempotency_in_flight for
+     the entire 25-min cap-out window. Fix: extend the WHERE
+     clause to `state IN ('pending', 'unknown')`. The 0004 trigger
+     allows pending → failed. Unit regression seeds a stale
+     pending row + not_found resource state and asserts it
+     transitions to failed; pre-fix the row stayed pending.

@@ -69,7 +69,12 @@ class FakePg {
     }
     if (/SET state = 'failed'/.test(text)) {
       const r = this.rows.find((x) => x.key === (params[0] as string));
-      if (r && r.state === 'unknown') {
+      // Mirror the SQL's WHERE clause so a pending-only-allowed
+      // SET would be filtered like the SQL does.
+      const whereStateClause = /WHERE key = \$1 AND state IN \('pending', 'unknown'\)/.test(text)
+        ? (s: string) => s === 'pending' || s === 'unknown'
+        : (s: string) => s === 'unknown';
+      if (r && whereStateClause(r.state)) {
         r.state = 'failed';
         r.outcome_status = 500;
         r.outcome_body = JSON.parse(params[1] as string);
@@ -150,6 +155,31 @@ describe('reconcileUnknownIdempotency (SPEC §5.1.2)', () => {
     expect(out.promoted_completed).toBe(1);
     expect(pg.rows[0]!.state).toBe('completed');
     expect(pg.rows[0]!.outcome_status).toBe(204);
+  });
+
+  it('SPEC §5.1.2: stale pending + not_found also promotes to failed (not just unknown)', async () => {
+    // Without this fix, a stale pending row whose resource is not_found
+    // would stay pending until the 5-attempt cap-out (25 min), blocking
+    // retries with 425 idempotency_in_flight the entire time.
+    pg.rows.push({
+      key: 'idk_pending_lost',
+      operation_type: 'revoke',
+      resource_ref: 'key:agk_lost',
+      state: 'pending',
+      reconcile_attempts: 0,
+      last_reconcile_at: null,
+      created_at: stale_at,
+    });
+    const out = await reconcileUnknownIdempotency(
+      {
+        postgres: asAdapter(pg),
+        checkResourceState: async () => ({ kind: 'not_found' as const }),
+      },
+      now,
+    );
+    expect(out.promoted_failed).toBe(1);
+    expect(pg.rows[0]!.state).toBe('failed');
+    expect(pg.rows[0]!.outcome_body).toEqual({ error: { code: 'commit_lost' } });
   });
 
   it('promotes not_found to failed when state is unknown', async () => {

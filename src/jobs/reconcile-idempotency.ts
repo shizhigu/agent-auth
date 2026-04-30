@@ -121,13 +121,18 @@ export async function reconcileUnknownIdempotency(
       );
       promoted_completed++;
     } else if (actual.kind === 'not_found') {
-      // unknown -> failed; pending should not "fail" yet (use cap to do so).
+      // SPEC §5.1.2: a stale row whose resource is not_found means the
+      // commit lost — both pending AND unknown should flip to failed
+      // so retries with the same idempotency key see the cached
+      // {code: 'commit_lost'} failure instead of being blocked at 425
+      // idempotency_in_flight for the full 25-min cap-out window.
+      // The 0004 trigger allows pending -> failed and unknown -> failed.
       await deps.postgres.query(
         `UPDATE agent_idempotency
             SET state = 'failed',
                 outcome_status = 500,
                 outcome_body = $2
-          WHERE key = $1 AND state = 'unknown'`,
+          WHERE key = $1 AND state IN ('pending', 'unknown')`,
         [row.key, JSON.stringify({ error: { code: 'commit_lost' } })],
       );
       promoted_failed++;
