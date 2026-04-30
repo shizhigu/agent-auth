@@ -23,12 +23,12 @@ v0.1.1 deployment-gated items enumerated in `docs/PRE_RELEASE_CHECKLIST.md`.
 
 | Tier | Count | Wall | Notes |
 |---|---|---|---|
-| Unit (vitest) | 262 | ~0.9 s | includes fast-check property sweeps |
-| Integration (testcontainers Postgres + Redis) | 32 | ~35 s | real DB + trigger invariants |
+| Unit (vitest) | 297 | ~0.9 s | includes fast-check property sweeps |
+| Integration (testcontainers Postgres + Redis) | 73 | ~80 s | real DB + trigger invariants + cross-region barrier + audit partition + cross-day chain |
 | Chaos (testcontainers + injected faults) | 14 | ~10 s | RT-15/18/22/25/32/34/43 |
 | Bench (vitest bench) | 2 | 5 s | cache-hit P99 ≈ 4 µs, miss+HMAC P99 ≈ 9 µs (§12.6 target 50/100 ms) |
 
-33 of 44 RT-* threats have automated test coverage; the remaining 11 are
+39 of 44 RT-* threats have automated test coverage; the remaining 5 are
 out-of-band SaaS-side / agent-SDK responsibilities or acknowledged
 compromises per SPEC §6.2.7.
 
