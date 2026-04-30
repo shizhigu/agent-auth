@@ -124,6 +124,23 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - [x] Integration tests: RT-10 (admin abuse), RT-38 (SSO compromise → break-glass) — RT-10 in `admin-cli.int` (RB-1 revoke-key end-to-end + RB-4 flush-cache rejected without co-signer / admitted with valid co-signer); RT-38 mitigation via `docs/break_glass.md` (per SPEC §8.1 break_glass.procedure reference) — independent break-glass admin path documented: physical YubiKeys + sealed-envelope JIT-RBAC seeds rooted independently of SSO, two-person co-sign required, audit `meta.break_glass=true` marker, 24h post-mortem mandate
 - [x] **Deliverable**: production-ready release pipeline (Sigstore + provenance + Scorecard + CODEOWNERS + JIT-RBAC + two-person)
 
+## Known gaps (deferred to v0.1.1)
+
+- **§2.9 owner_approval doesn't actually gate /callback** —
+  `emitOwnerApprovalRequest` (called from /recover-account) writes
+  the agent_recovery_approvals row with decision='pending' and
+  fires a signed webhook. /recover-account-confirm later updates
+  the decision. But /callback for kind='recover' issues the new
+  key without checking decision. SPEC §2.9 step 5–6: "Wait for
+  approval ... After approval (or if not required) ... Issue NEW
+  key". Effect: configured owner-approval webhooks notify the
+  owner but don't actually gate recovery. Refactor scope: needs
+  a session "awaiting_approval" status (or equivalent), key
+  issuance deferred until approval, and a way for the deny path
+  to revoke an already-issued key. SaaSes that don't configure
+  owner_approval are unaffected. Tracked as deferred; no test
+  exercises the gating today, so no integration regression.
+
 ## Cross-cutting / pre-release (SPEC §12.7)
 
 - [~] **All 44 RT-* threats have integration tests §12.3** — most threats
