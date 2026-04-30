@@ -18,6 +18,13 @@ export interface AuditVerifierDeps {
   readonly onAlert?: (label: string, meta: Record<string, unknown>) => void;
   /** Override 'now' for tests. */
   readonly now?: () => Date;
+  /**
+   * Optional explicit UTC day to verify. When set, the verifier scopes
+   * its read to `[target_day, target_day + 1 day)` instead of the
+   * default `today only`. Use case: RB-6 forensic response — verify a
+   * specific suspect day after a tamper alert.
+   */
+  readonly target_day?: Date;
 }
 
 export interface AuditVerifierResult {
@@ -46,16 +53,26 @@ export async function verifyAuditChain(
   deps: AuditVerifierDeps,
 ): Promise<AuditVerifierResult> {
   const now = deps.now ? deps.now() : new Date();
-  const today_start = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+  const day_anchor = deps.target_day ?? now;
+  const day_start = new Date(
+    Date.UTC(
+      day_anchor.getUTCFullYear(),
+      day_anchor.getUTCMonth(),
+      day_anchor.getUTCDate(),
+    ),
   );
+  const day_end = new Date(day_start.getTime() + 24 * 60 * 60 * 1000);
+  // When verifying a historical day, scope the read with an upper bound so
+  // we don't accidentally splice in rows from later days (which would have
+  // their own ZERO_HASH-seeded chain). Today-only mode also benefits from
+  // the bound — late writers can't alter the inspected window mid-run.
   const rows = await deps.postgres.query<AuditRowDB>(
     `SELECT id::text AS id, ts, event_type, account_id::text AS account_id,
             key_id, endpoint, status_class, meta, prev_hash, row_hash
        FROM agent_audit_log
-      WHERE ts >= $1
+      WHERE ts >= $1 AND ts < $2
       ORDER BY id ASC`,
-    [today_start],
+    [day_start, day_end],
   );
 
   const built = rows.rows.map((r) => ({
@@ -76,7 +93,7 @@ export async function verifyAuditChain(
     deps.onAlert?.('audit_hash_chain_break', {
       at_id: first?.id ?? null,
       ts: first?.ts.toISOString() ?? null,
-      partition_start: today_start.toISOString(),
+      partition_start: day_start.toISOString(),
     });
     return {
       inspected: rows.rows.length,

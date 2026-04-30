@@ -104,7 +104,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - [x] `src/audit/worm-writer.ts` — `writeAuditToWorm` PutObject with `ObjectLockMode='COMPLIANCE'` + 7-year retention; outbox enqueue on failure; `AwsS3WormPutter` (real) + `InMemoryWormPutter` (tests) §6.4.2 / ADR-010; tier='B' events fail-closed with 503 audit_unavailable when WORM put fails (RT-28 — outbox row still durable for retry)
 - [x] **In-tx audit emission across all public Tier B routes** (SPEC §6.4) — /revoke, /rotate-key (planned + emergency), /webhooks/:provider cascade, /callback (registration + recover + revalidate success paths), /recover-account-confirm. Each writes `event_type=&lt;route&gt;` with account_id / key_id / identity_id and meta carrying the route-specific fields, all scrubbed by defaultScrubber.
 - [x] `src/audit/scrubber.ts` — folded into `src/observability/scrubber.ts` (single scrubber serves audit + logs + metrics); applied automatically by `writeAuditRow` and `writeAuditToWorm` §6.6
-- [x] `src/jobs/audit-verifier.ts` — daily-partition hash-chain integrity check via `verifyChain`; pages onAlert with `audit_hash_chain_break` + first break id/ts §6.4.1
+- [x] `src/jobs/audit-verifier.ts` — daily-partition hash-chain integrity check via `verifyChain`; pages onAlert with `audit_hash_chain_break` + first break id/ts §6.4.1; accepts optional `target_day?: Date` for RB-6 forensic verification of a specific past day; query is bounded `[day_start, day_start+24h)` so cross-day rows can never splice into the inspected window
 - [x] `src/jobs/outbox-flusher.ts` — drains `agent_audit_outbox` with retry budget; flags rows past `max_attempts` as `audit_outbox_stuck` for SREs §6.4.2
 - [x] `src/jobs/audit-partition-manager.ts` — daily partition manager (SPEC §3.8 / §13.1.2). Pre-creates `agent_audit_log_YYYY_MM_DD` partitions for the next N days (default 7); idempotent skip when already attached. Migration 0002 sets parent OWNER to `agent_auth_migrator` so the job role can attach.
 - [x] `scripts/dr-drill.sh` — quarterly DR drill: sample-prod-revoked → spot-check sandbox → assert audit chain present (§8.3.3)
@@ -151,7 +151,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - **Unit tests**: 293 passing across 41 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
-- **Integration**: 72 passing against real Postgres 16 + Redis 7
+- **Integration**: 73 passing against real Postgres 16 + Redis 7
   (testcontainers, ~80 s — healthz unhealthy-path waits ioredis retries):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
     fallback, invalid_secret rejection.
@@ -171,9 +171,11 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
   - rotation.int (2): planned rotation transitions old → 'rotating' with
     grace + creates new active key; concurrent rotation race resolves via
     §3.5 unique_violation trigger.
-  - audit-chain.int (2): hash chain intact for sequence of writeAuditRow
+  - audit-chain.int (3): hash chain intact for sequence of writeAuditRow
     calls; admin-role tamper of a row_hash flips first_break_index ≥ 0
-    and pages oncall.
+    and pages oncall; cross-UTC-day independence — verifier with
+    target_day=D treats each day's chain as ZERO_HASH-seeded, so a chain
+    spanning two days verifies as two independent intact chains.
   - idempotency.int (5): tierBIdempotent end-to-end (pending →
     completed atomically); replay returns cached without re-running op;
     RT-27 payload-mismatch → 409; §3.13 trigger refuses pending →

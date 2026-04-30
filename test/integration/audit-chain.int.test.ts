@@ -66,6 +66,48 @@ describe('integration: audit hash chain (SPEC §6.4.1 / RT-12)', () => {
     expect(out.inspected).toBeGreaterThanOrEqual(3);
   });
 
+  it('cross-day independence: a chain spanning two UTC days verifies as two independent chains', async () => {
+    // Insert two rows on day D1 with explicit ts; then two rows on day D2.
+    // Without per-day scoping, the verifier would see prev_hash(D2[0]) ==
+    // ZERO_HASH (per the §3.8 trigger) but the previous row in id order
+    // would be D1[1] with row_hash != ZERO_HASH — a false-positive break.
+    // With per-day scoping each chain is checked against ZERO_HASH seed.
+    const D1 = new Date('2026-09-10T12:00:00Z');
+    const D2 = new Date('2026-09-11T01:00:00Z');
+    await writeAuditRow(
+      { event_type: 'cross_day_a', status_class: 2, ts: D1 },
+      { postgres: fix.postgres },
+    );
+    await writeAuditRow(
+      { event_type: 'cross_day_b', status_class: 2, ts: D1 },
+      { postgres: fix.postgres },
+    );
+    await writeAuditRow(
+      { event_type: 'cross_day_c', status_class: 2, ts: D2 },
+      { postgres: fix.postgres },
+    );
+    await writeAuditRow(
+      { event_type: 'cross_day_d', status_class: 2, ts: D2 },
+      { postgres: fix.postgres },
+    );
+
+    // Verify D1 in isolation — intact.
+    const out_d1 = await verifyAuditChain({
+      postgres: adminPg,
+      target_day: D1,
+    });
+    expect(out_d1.first_break_index).toBe(-1);
+    expect(out_d1.inspected).toBeGreaterThanOrEqual(2);
+
+    // Verify D2 in isolation — intact (own chain seeded with ZERO_HASH).
+    const out_d2 = await verifyAuditChain({
+      postgres: adminPg,
+      target_day: D2,
+    });
+    expect(out_d2.first_break_index).toBe(-1);
+    expect(out_d2.inspected).toBeGreaterThanOrEqual(2);
+  });
+
   it('detects tampering — UPDATEing a row_hash via admin role surfaces audit_hash_chain_break', async () => {
     // The app role has INSERT-only on agent_audit_log; tampering must use
     // the admin role (which itself logs the override per §3.13 / 0004).
