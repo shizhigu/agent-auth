@@ -146,8 +146,8 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - **Unit tests**: 274 passing across 37 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
-- **Integration**: 40 passing against real Postgres 16 + Redis 7
-  (testcontainers, ~48 s):
+- **Integration**: 46 passing against real Postgres 16 + Redis 7
+  (testcontainers, ~50 s):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
     fallback, invalid_secret rejection.
   - revoke.int (2): Tier B revoke writes log + bumps epoch + invalidates
@@ -202,6 +202,16 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
     bound to the same account_id, sealed payload decrypts to a
     validate-able key; pre-revocation old key remains revoked (recover
     does NOT resurrect old keys per §2.9 step 6).
+  - recover-account-confirm.int (4): RT-19 / RT-41 against real DB
+    + Redis. Approve persists decision; replay with same nonce
+    rejected (Redis SET NX guard); ts > 5 min skew rejected; idempotent
+    decision — fresh-nonce replay against an already-decided row
+    returns the cached decision unchanged.
+  - admin-cli.int (2): RB-1 revoke-key end-to-end against real DB —
+    audit row 'admin_revoke-key' written BEFORE side-effect; key
+    revoked + epoch bumped + revocation_log appended; two-person
+    flush-cache rejected without co-signer, succeeds with valid
+    co-signer signature.
 - **Chaos**: 14 passing (~10 s):
   - redis-partition (2): RT-25 healthy + partitioned-Redis no-false-accept
     invariant via testcontainers stop().
