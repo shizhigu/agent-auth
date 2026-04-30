@@ -6,19 +6,22 @@ sign-off recorded in CHANGELOG).
 
 ## Code quality
 
-- [x] **All unit tests pass** — `npm test` (255+ tests, all green at HEAD)
+- [x] **All unit tests pass** — `npm test` (297 tests, all green at HEAD)
 - [x] **TypeScript strict mode clean** — `npx tsc --noEmit` (no errors)
 - [x] **ESLint clean** — `npm run lint` (no `any` in security paths;
   `req.user` warning rule active per §6.3)
-- [ ] **All integration tests pass** — `npm run test:integration`
-  (testcontainers-driven; requires Docker)
-- [ ] **All chaos tests pass** — `npm run test:chaos` (Toxiproxy scenarios
-  per §12.4)
-- [ ] **Property-based tests pass (1000 iterations)** — fast-check sweeps
-  on idempotency, rotation, audit chain
+- [x] **All integration tests pass** — `npm run test:integration`
+  (testcontainers-driven; 73 tests, ~80 s wall)
+- [x] **All chaos tests pass** — `npm run test:chaos` (14 tests across
+  redis-partition / multi-region-failover / kms-unavailable /
+  dos-rate-limit / fail-closed-amplification scenarios per §12.4)
+- [~] **Property-based tests pass (1000 iterations)** — fast-check sweeps
+  on idempotency state machine + canonicalRequestHash; rotation +
+  audit-canonical-bytes property tests deferred to v0.1.1
 - [x] **Benchmarks meet targets** — `npm run bench`
   (validation_cache_hit P50 < 5 ms / P99 < 50 ms; cache_miss_with_hmac
-  P50 < 30 ms / P99 < 100 ms per §12.6)
+  P50 < 30 ms / P99 < 100 ms per §12.6 — current: 2.5 µs / 4.3 µs hit,
+  4.6 µs / 9.0 µs miss)
 
 ## Schema & migrations
 
@@ -42,7 +45,7 @@ sign-off recorded in CHANGELOG).
 ## Security review
 
 - [ ] **OWASP API Top 10 self-review** — see docs/security/OWASP-API-self-review.md
-- [~] **All 44 RT-* threats have integration / unit test coverage** (28 / 44 covered):
+- [~] **All 44 RT-* threats have integration / unit test coverage** (32 / 44 covered):
   - [x] RT-3 (Redis compromise → cache-only) — integration (redis flushdb fallback)
   - [x] RT-6 (webhook replay) — unit + integration (delivery_id dedup)
   - [x] RT-9 (BOLA / cross-tenant) — unit (validate-key) + integration (revoke 404 anti-enumeration)
@@ -55,6 +58,7 @@ sign-off recorded in CHANGELOG).
   - [x] RT-25 (Redis partition) — chaos (container stop)
   - [x] RT-26 (stale Redis epoch / split-brain) — integration (revoke bumps epoch)
   - [x] RT-27 (idempotency replay payload mismatch) — unit + integration (real trigger)
+  - [x] RT-28 (WORM write suppression) — unit + integration (Tier B writeAuditToWorm fails-closed with audit_unavailable when S3 put fails; outbox row still durable for retry)
   - [x] RT-29 (OAuth state phishing) — unit (PKCE RFC 7636 vector) + integration (single-use nonce)
   - [x] RT-30 (webhook spoof / order gap) — unit + integration (collision alert)
   - [x] RT-31 (tenant confused-deputy in recovery) — unit (target_account_id mismatch)
@@ -74,8 +78,10 @@ sign-off recorded in CHANGELOG).
   - [ ] RT-1 (phishing app authorization) — out-of-band; SaaS UX responsibility
   - [ ] RT-7 (agent process memory leak) — out-of-band; agent SDK responsibility (acknowledged in SPEC §6.2.7)
   - [ ] RT-8 (Sybil at warm tier) — documented compromise (warm tier must not unlock expensive ops); SaaS owner gates hot tier
-  - [ ] RT-13, RT-28, RT-35, RT-37 — out-of-band operational controls (KMS / S3 / supply chain); tracked as v0.1.1 work
-- [x] **Audit hash chain verifier** runs end-to-end against test data — unit
+  - [ ] RT-13, RT-35, RT-37 — out-of-band operational controls (KMS / S3 / supply chain); tracked as v0.1.1 work
+- [x] **Audit hash chain verifier** runs end-to-end against test data —
+  unit + integration (audit-chain.int includes cross-day independence
+  + RB-6 forensic target_day verification)
 - [ ] **30-day historical replay** of audit chain in staging
 - [ ] **DR drill on staging — RTO < 1h confirmed** — `scripts/dr-drill.sh`
 
@@ -102,12 +108,19 @@ sign-off recorded in CHANGELOG).
 
 ## Status notes (2026-04-30, agent-auth v0.1 cut)
 
-- **Functional code: 8 / 8 milestones complete**, 255+ unit tests passing
-  at HEAD.
-- **Integration suite scaffolded** under `test/integration/` with
-  testcontainers — runs locally with Docker; needs CI runner with Docker
-  enabled (currently 4 tests covering M1 hot path).
-- **Chaos suite, full integration sweep across all RT-*, property-based
-  tests, and 30-day historical replay** are deferred to v0.1.1
-  (the §12.7 checklist enforces them as gating items before any
-  customer-facing v1.0 tag).
+- **Functional code: 8 / 8 milestones complete**, 297 unit tests passing
+  at HEAD across 41 suites.
+- **Integration suite mature** under `test/integration/` with
+  testcontainers — 73 tests, ~80 s wall, covering all M1-M8 routes +
+  cross-region barrier + audit chain (cross-day independence + RB-6
+  forensic mode) + audit partition manager + Tier B audit_unavailable
+  fail-closed (RT-28) + RT-31 cross-tenant recovery + RT-42 webhook
+  secret rotation. Runs locally with Docker; needs CI runner with
+  Docker enabled.
+- **Chaos suite is in tree and green** — 14 tests covering
+  redis-partition (RT-25), multi-region-failover (RT-18/RT-32/RT-34),
+  kms-unavailable (RT-22), dos-rate-limit (RT-15), fail-closed-
+  amplification (RT-43).
+- **Property-based tests, 30-day historical replay, and the v1.0 tag
+  gate** remain v0.1.1 work; the §12.7 checklist still enforces them
+  as gating items before any customer-facing tag.
