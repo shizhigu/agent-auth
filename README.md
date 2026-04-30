@@ -11,6 +11,8 @@
 [![Node.js 20+](https://img.shields.io/badge/Node.js-20%2B-brightgreen.svg)](https://nodejs.org)
 [![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Tests](https://img.shields.io/badge/tests-355%20unit%20%C2%B7%2094%20integration%20%C2%B7%2014%20chaos-success)](#testing)
+[![Maintained by shizhigu](https://img.shields.io/badge/maintained%20by-shizhigu-blue)](https://github.com/shizhigu)
+[![Contributions: issues only](https://img.shields.io/badge/contributions-issues%20only-yellow)](#contributing)
 
 [Quick start](#quick-start) ·
 [How it works](#how-it-works) ·
@@ -267,7 +269,13 @@ Node.js 20+ (Bun-compatible) · TypeScript 5.4 strict · libsodium · pg · iore
 
 ## Contributing
 
-This is a personal project at v0.1, but bug reports and security findings are very welcome — see [`SECURITY.md`](SECURITY.md) for the responsible disclosure process. PRs that touch `SPEC.md` should add an ADR to Appendix B with rationale (see existing ADR-001..ADR-014 for the format).
+This is a personal project, maintained by [@shizhigu](https://github.com/shizhigu) alone.
+
+**Bug reports and security findings are very welcome** — open an [Issue](https://github.com/shizhigu/agent-auth/issues), or for vulnerabilities follow [`SECURITY.md`](SECURITY.md) (private disclosure).
+
+**Feature PRs are not actively solicited.** Because this is an auth library, the supply-chain risk of merging unreviewed code is high and I don't have the bandwidth to review at the depth this codebase requires. If you have a small bug-fix PR, please **open an issue first** so we can agree on the approach before you write code. PRs without a linked issue will likely be closed.
+
+If you want to extend or fork this for your own use, the MIT license gives you everything you need — go for it.
 
 ## License
 
