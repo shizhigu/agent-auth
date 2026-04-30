@@ -27,7 +27,6 @@ import {
   keypair,
   open as sealedOpen,
 } from '../../src/crypto/sealed-box.js';
-import { hmacWithPepper } from '../../src/crypto/hmac-pepper.js';
 import {
   emitOwnerApprovalRequest,
   type OwnerApprovalConfig,

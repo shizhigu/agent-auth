@@ -176,9 +176,10 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Test summary at HEAD
 
-- **Unit tests**: 351 passing across 48 suites, ~930 ms wall (includes
-  fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
-  aws-sdk-client-mock + down-migration structural invariants).
+- **Unit tests**: 355 passing across 49 suites, ~600 ms wall (includes
+  fast-check property tests for hash-chain linkage, GCRA invariants
+  (SPEC §12.5), AwsKmsAdapter + AwsS3WormPutter via
+  aws-sdk-client-mock, and down-migration structural invariants).
 - **Integration**: 94 passing across 27 suites against real Postgres 16 + Redis 7
   (testcontainers, ~80 s — healthz unhealthy-path waits ioredis retries):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
