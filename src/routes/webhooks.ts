@@ -26,6 +26,7 @@ import {
 } from '../distributed/revocation-epoch.js';
 import { captureBarrierAfterCommit } from '../distributed/revocation-barrier.js';
 import { invalidateKey } from '../distributed/cache-invalidation.js';
+import { writeAuditRowOnClient } from '../audit/db-writer.js';
 import type { PostgresAdapter } from '../storage/postgres-adapter.js';
 import type { RedisAdapter } from '../storage/redis-adapter.js';
 import type {
@@ -249,6 +250,22 @@ async function applyAction(
      VALUES ($1, 'identity_revoke', $2, $3::pg_lsn, $4, $5)`,
     [deps.region, action.subject, commit_lsn, epoch, action.reason],
   );
+  // SPEC §6.4 — emit audit row in the SAME txn (RT-6 / RT-39 — webhook
+  // cascade must produce a durable audit record alongside the cascade).
+  await writeAuditRowOnClient(client, {
+    event_type: 'webhook_identity_revoke',
+    endpoint: '/api/agent-auth/webhooks/:provider',
+    status_class: 2,
+    account_id: idRow.account_id,
+    identity_id: idRow.id,
+    meta: {
+      provider_subject: action.subject,
+      reason: action.reason,
+      keys_invalidated: keys,
+      commit_lsn,
+      epoch,
+    },
+  });
   return keys;
 }
 

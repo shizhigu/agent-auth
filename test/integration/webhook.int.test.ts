@@ -134,6 +134,18 @@ describe('integration: webhook (SPEC §2.2.4 / RT-6 / RT-30)', () => {
         WHERE target_id = '99999' ORDER BY id DESC LIMIT 1`,
     );
     expect(log?.kind).toBe('identity_revoke');
+
+    // SPEC §6.4 — webhook cascade emits an audit row in the same txn.
+    const audit = await fix.postgres.queryOne<{
+      event_type: string;
+      account_id: string;
+    }>(
+      `SELECT event_type, account_id::text AS account_id FROM agent_audit_log
+        WHERE event_type = 'webhook_identity_revoke' AND account_id = $1::uuid
+        ORDER BY id DESC LIMIT 1`,
+      [account_id],
+    );
+    expect(audit?.event_type).toBe('webhook_identity_revoke');
   });
 
   it('RT-6: replay of the same delivery returns duplicate (no extra revocation)', async () => {

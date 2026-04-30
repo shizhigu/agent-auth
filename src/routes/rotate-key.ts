@@ -30,6 +30,7 @@ import { captureBarrierAfterCommit } from '../distributed/revocation-barrier.js'
 import { invalidateKey } from '../distributed/cache-invalidation.js';
 import { issueNewKey, buildSealedPayload } from '../identity/issue-key.js';
 import { seal } from '../crypto/sealed-box.js';
+import { writeAuditRowOnClient } from '../audit/db-writer.js';
 import type { PostgresAdapter } from '../storage/postgres-adapter.js';
 import type { RedisAdapter } from '../storage/redis-adapter.js';
 import type { KmsAdapter } from '../storage/kms-adapter.js';
@@ -265,6 +266,23 @@ async function runRotateInTx(
 
   // Bump epoch (rotating is auth-relevant: validators must see the new state).
   await bumpEpochInTx(client, deps.redis);
+
+  // SPEC §6.4 — emit audit row in the SAME txn so the in-DB hash chain
+  // captures the rotation atomically with the mutation. event_type
+  // differentiates planned vs emergency for downstream forensics.
+  await writeAuditRowOnClient(client, {
+    event_type: emergency ? 'emergency_rotate' : 'planned_rotate',
+    endpoint: '/api/agent-auth/rotate-key',
+    status_class: 2,
+    account_id: old.account_id,
+    key_id: old.key_id,
+    meta: {
+      old_key_id: old.key_id,
+      new_key_id: issued.key_id,
+      grace_seconds: body.grace_seconds,
+      reason: body.reason ?? null,
+    },
+  });
 
   const new_key: RotateResponse['new_key'] = {
     key_id: issued.key_id,

@@ -135,6 +135,19 @@ function runQuery<R>(
     });
     return { rows: [], rowCount: 1 };
   }
+  if (/INSERT INTO agent_audit_log/.test(text)) {
+    return {
+      rows: [
+        {
+          id: '1',
+          ts: new Date(),
+          row_hash: Buffer.alloc(32),
+          prev_hash: Buffer.alloc(32),
+        },
+      ] as unknown as R[],
+      rowCount: 1,
+    };
+  }
   if (/SET LOCAL synchronous_commit/.test(text) || /^(BEGIN|COMMIT|ROLLBACK|SET ROLE)/.test(text.trim())) {
     return { rows: [], rowCount: 0 };
   }

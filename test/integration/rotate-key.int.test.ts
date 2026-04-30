@@ -164,6 +164,18 @@ describe('integration: /rotate-key (SPEC §2.7 / §3.5)', () => {
       [key_id],
     );
     expect(oldRow?.rotation_state).toBe('revoked');
+
+    // SPEC §6.4 — emergency rotation produced an audit row in-tx.
+    const audit = await fix.postgres.queryOne<{
+      event_type: string;
+      key_id: string;
+    }>(
+      `SELECT event_type, key_id FROM agent_audit_log
+        WHERE event_type = 'emergency_rotate' AND key_id = $1
+        ORDER BY id DESC LIMIT 1`,
+      [key_id],
+    );
+    expect(audit?.event_type).toBe('emergency_rotate');
   });
 
   it('idempotent emergency replay returns the cached new key without issuing another', async () => {
