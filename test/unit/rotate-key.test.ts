@@ -85,6 +85,10 @@ function runQuery<R>(
       string,
       string,
     ];
+    // INSERT ... ON CONFLICT (key) DO NOTHING RETURNING (xmax = 0)
+    if (db.idempotency.has(key)) {
+      return { rows: [], rowCount: 0 };
+    }
     db.idempotency.set(key, {
       key,
       request_hash,
@@ -97,7 +101,7 @@ function runQuery<R>(
       expires_at: new Date(Date.now() + 24 * 3600 * 1000),
       created_at: new Date(),
     });
-    return { rows: [], rowCount: 1 };
+    return { rows: [{ inserted: true } as unknown as R], rowCount: 1 };
   }
   if (/UPDATE agent_idempotency/.test(text) && /SET state = 'completed'/.test(text)) {
     const r = db.idempotency.get(params[0] as string);

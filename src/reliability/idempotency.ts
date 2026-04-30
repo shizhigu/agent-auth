@@ -123,19 +123,22 @@ export async function tierBIdempotent<T>(
   options: TierBIdempotentOptions = {},
 ): Promise<IdempotencyResult<T>> {
   // ----- Phase 1: durable reservation in a tier-A transaction. -----
+  //
+  // Race-free: use INSERT ... ON CONFLICT DO NOTHING so concurrent calls
+  // with the same idempotency key serialize on the PK lock. The previous
+  // pattern (SELECT FOR UPDATE → INSERT) had a TOCTOU window between the
+  // two queries — both T1 and T2 would see no row in their SELECT, both
+  // would proceed to INSERT, and T2 would hit SQLSTATE 23505 → txn abort
+  // → opaque 500 to the caller (the very thing idempotency is supposed
+  // to prevent).
+  const ttl_ms = options.ttl_ms ?? 24 * 60 * 60 * 1000;
   const reserved = await pg.transaction(async (tx) => {
-    const existing = await tx.query<IdempotencyRow>(
-      `SELECT * FROM agent_idempotency WHERE key = $1 FOR UPDATE`,
-      [args.idempotency_key],
-    );
-    if (existing.rows.length > 0) {
-      return existing.rows[0]!;
-    }
-    const ttl_ms = options.ttl_ms ?? 24 * 60 * 60 * 1000;
-    await tx.query(
+    const insertRes = await tx.query<{ inserted: boolean }>(
       `INSERT INTO agent_idempotency
          (key, request_hash, operation_type, resource_ref, state, expires_at)
-       VALUES ($1, $2, $3, $4, 'pending', now() + ($5 || ' milliseconds')::interval)`,
+       VALUES ($1, $2, $3, $4, 'pending', now() + ($5 || ' milliseconds')::interval)
+       ON CONFLICT (key) DO NOTHING
+       RETURNING (xmax = 0) AS inserted`,
       [
         args.idempotency_key,
         args.request_hash,
@@ -144,7 +147,18 @@ export async function tierBIdempotent<T>(
         ttl_ms.toString(),
       ],
     );
-    return null;
+    if (insertRes.rows[0]?.inserted === true) {
+      // Fresh reservation; proceed to phase 2 with a clean slate.
+      return null;
+    }
+    // Conflict: another caller already reserved this key. Re-fetch the
+    // existing row under FOR UPDATE so the replay branch sees a stable
+    // snapshot.
+    const existing = await tx.query<IdempotencyRow>(
+      `SELECT * FROM agent_idempotency WHERE key = $1 FOR UPDATE`,
+      [args.idempotency_key],
+    );
+    return existing.rows[0] ?? null;
   });
 
   if (reserved) {

@@ -39,6 +39,11 @@ class FakeIdemPg {
         string,
         string,
       ];
+      // INSERT ... ON CONFLICT (key) DO NOTHING RETURNING (xmax = 0)
+      // If the key already exists, return no rows (conflict).
+      if (this.rows.has(key)) {
+        return { rows: [], rowCount: 0 };
+      }
       const row: IdemRow = {
         key,
         request_hash,
@@ -52,7 +57,10 @@ class FakeIdemPg {
         created_at: new Date(),
       };
       this.rows.set(key, row);
-      return { rows: [], rowCount: 1 };
+      return {
+        rows: [{ inserted: true } as unknown as R],
+        rowCount: 1,
+      };
     }
     if (/UPDATE agent_idempotency/.test(text) && /SET state = 'completed'/.test(text)) {
       const [key, status, body] = params as [string, number, string];
