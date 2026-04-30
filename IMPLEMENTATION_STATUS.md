@@ -160,10 +160,14 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
   testcontainers control (stop/start) which exercises the same
   failure modes more deterministically.
 - [~] **Property-based tests pass §12.5** — fast-check covering
-  idempotency state-machine transitions (`idempotency.property.test.ts`)
-  and `canonicalRequestHash` (key-order invariance, array-order
-  meaning, primitive type stability, deep equality). Rotation race
-  + audit-canonical-bytes property tests deferred to v0.1.1.
+  idempotency state-machine transitions
+  (`idempotency.property.test.ts`), `canonicalRequestHash`
+  (key-order invariance, array-order meaning, primitive type
+  stability, deep equality), and audit hash chain linkage
+  (`audit-chain.property.test.ts` — intact-chain invariance,
+  prev_hash/row_hash tampering detected at the right index,
+  adjacent-row swap detection). Rotation race property tests
+  deferred to v0.1.1.
 - [x] **`npm run bench` within targets §12.6** — `bench/validation.bench.ts`:
   cache hit P99 ≈ 4 µs, cache-miss + HMAC P99 ≈ 9 µs (targets 50 ms / 100 ms).
 - [x] **Pre-release checklist §12.7** — `docs/PRE_RELEASE_CHECKLIST.md`
@@ -172,7 +176,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Test summary at HEAD
 
-- **Unit tests**: 346 passing across 47 suites, ~930 ms wall (includes
+- **Unit tests**: 351 passing across 48 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
 - **Integration**: 94 passing across 27 suites against real Postgres 16 + Redis 7
