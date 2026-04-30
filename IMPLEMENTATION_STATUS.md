@@ -34,12 +34,13 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 ## Milestone M2 — GitHub App registration (SPEC §11.2 M2)
 
 - [x] `src/identity/provider.ts` — `IdentityProvider` interface §2.1 (lives in `src/types.ts`)
-- [ ] `src/identity/github-app/browser-flow.ts` — beginRegistration, exchangeOrVerify §2.2.2
-- [ ] `src/identity/github-app/device-flow.ts` — alt path §2.2.3
-- [ ] `src/identity/github-app/revalidate.ts` — periodic re-verification §2.4
+- [x] `src/identity/github-app/browser-flow.ts` — `GitHubAppProvider`: authorize URL builder, code-exchange via `fetch` (injectable), Attestation construction, App-JWT-based revalidate fallback §2.2.2
+- [ ] `src/identity/github-app/device-flow.ts` — alt path §2.2.3 (deferred — v0.1 default is browser flow per §2.2.1)
+- [x] `src/identity/github-app/revalidate.ts` — folded into `GitHubAppProvider.revalidate()` (no-op when no app private key configured)
 - [x] `src/routes/begin-registration.ts` — zod input validation, PKCE+nonce mint, session insert, IdP `beginRegistration` call, 503 idp_circuit_open on provider error §10.1
 - [x] `src/routes/registration-status.ts` — pending/completed/failed state machine + RT-21 cross-kind rejection §10.1
-- [ ] `src/routes/callback.ts` — OAuth code → attestation → key issuance §2.2.2
+- [x] `src/routes/callback.ts` — full §2.2.2 step a-k pipeline: nonce-bound session FOR UPDATE, exchanging→ready transitions, audience-binding check, identity cases A/B/C/D, account+identity creation, key issuance, sealed-box payload write
+- [x] `src/identity/issue-key.ts` — shared `issueNewKey(client, kms, input)` + `buildSealedPayload` (§2.2.2 step h, §2.6); reused by /rotate-key in M3
 - [x] `src/crypto/sealed-box.ts` — libsodium `crypto_box_seal` (X25519 + XSalsa20-Poly1305), 48 bytes overhead, async-init guard §2.6 / ADR-004
 - [x] `src/jobs/reaper.ts` — `reapRegistrationSessions` deletes sessions 1h past `expires_at` §3.6
 - [x] PKCE state binding + nonce single-use enforced via `agent_registration_sessions` schema (`nonce UNIQUE`, FOR UPDATE in callback) §2.2.2 / §6.2.1 RT-29
