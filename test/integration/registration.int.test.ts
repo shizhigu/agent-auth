@@ -13,9 +13,11 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { randomBytes } from 'node:crypto';
 import { provisionFixture, type IntegrationFixture } from './setup.js';
 import { beginRegistration } from '../../src/routes/begin-registration.js';
 import { callback } from '../../src/routes/callback.js';
+import { recoverAccount } from '../../src/routes/recover-account.js';
 import { registrationStatus } from '../../src/routes/registration-status.js';
 import {
   open as sealedOpen,
@@ -206,5 +208,161 @@ describe('integration: full registration flow (SPEC §2.2.2 + §2.6)', () => {
     );
     expect(replay.status).toBe('failed');
     expect(replay.reason).toBe('registration_session_not_found_or_expired');
+  });
+
+  it('RT-31: audience mismatch — provider returns Iv1.OTHER, session bound to Iv1.regtest → audience_mismatch', async () => {
+    // Provider that lies about audience (returns a different one than the
+    // session was bound to). Models a token that crossed tenants in transit.
+    const lyingProvider: IdentityProvider = {
+      name: 'github_app',
+      async beginRegistration(ctx) {
+        return { challenge_url: `https://github.com/login/oauth/authorize?state=${ctx.nonce}` };
+      },
+      async exchangeOrVerify(_input, _ctx): Promise<Attestation> {
+        return {
+          issuer: 'github.com',
+          subject: 'rt31-aud',
+          audience: 'Iv1.OTHER', // mismatch — session was bound to Iv1.regtest
+          display_handle: 'rt31-aud',
+          assurance_level: 'medium',
+          supports_revalidation: true,
+        };
+      },
+      async revalidate() {
+        return { still_valid: true };
+      },
+    };
+
+    const begin = await beginRegistration(
+      {
+        provider: 'github_app',
+        intent: 'register',
+        client_pubkey: agentKp.publicKey.toString('base64url'),
+      },
+      {
+        postgres: fix.postgres,
+        identity_providers: [lyingProvider],
+        redirect_uri: () => 'https://saas.example/callback',
+        audience: () => 'Iv1.regtest',
+        request_context: { ip_hash: Buffer.alloc(32, 9), user_agent: 'integration' },
+      },
+    );
+    const session = await fix.postgres.queryOne<{ nonce: string }>(
+      `SELECT nonce FROM agent_registration_sessions WHERE poll_token = $1`,
+      [begin.poll_token],
+    );
+
+    const cb = await callback(
+      { provider: 'github_app', state: session!.nonce, code: 'gho_stub' },
+      {
+        postgres: fix.postgres,
+        kms: fix.kms,
+        identity_providers: [lyingProvider],
+        request_context: { ip_hash: Buffer.alloc(32, 9), user_agent: 'integration' },
+      },
+    );
+    expect(cb.status).toBe('failed');
+    if (cb.status === 'failed') {
+      expect(cb.reason).toBe('audience_mismatch');
+    }
+    // Session row marked failed with audience_mismatch as status_message.
+    const failed = await fix.postgres.queryOne<{ status: string; status_message: string }>(
+      `SELECT status, status_message FROM agent_registration_sessions
+        WHERE poll_token = $1`,
+      [begin.poll_token],
+    );
+    expect(failed?.status).toBe('failed');
+    expect(failed?.status_message).toBe('audience_mismatch');
+    // No identity / account / api_keys rows created for the lying subject.
+    const idCount = await fix.postgres.queryOne<{ c: string }>(
+      `SELECT count(*)::text AS c FROM agent_identities WHERE subject = $1`,
+      ['rt31-aud'],
+    );
+    expect(Number(idCount?.c ?? '0')).toBe(0);
+  });
+
+  it('RT-31: cross-tenant recovery — recover into account B with identity that belongs to account A → identity_account_mismatch', async () => {
+    // Pre-seed account A + identity I (subject=cross-tenant-1).
+    const acctA = await fix.postgres.queryOne<{ id: string }>(
+      `INSERT INTO agent_accounts (display_handle, tier, status)
+         VALUES ('rt31-acct-A', 'cold', 'active') RETURNING id`,
+    );
+    await fix.postgres.query(
+      `INSERT INTO agent_identities
+         (account_id, provider, subject, audience, issuer, assurance_level,
+          display_handle, is_primary, status)
+         VALUES ($1, 'github_app', 'cross-tenant-1', 'Iv1.regtest', 'github.com',
+                 'medium', 'rt31-A-octo', true, 'active')`,
+      [acctA!.id],
+    );
+    // Pre-seed account B (different account; the attacker target).
+    const acctB = await fix.postgres.queryOne<{ id: string }>(
+      `INSERT INTO agent_accounts (display_handle, tier, status)
+         VALUES ('rt31-acct-B', 'cold', 'active') RETURNING id`,
+    );
+
+    // Provider returns the IDENTITY's attestation (subject=cross-tenant-1)
+    // — but the recovery session targets account B. Models an attacker who
+    // controls identity I and tries to use it to recover into a stranger's
+    // account.
+    const provider2: IdentityProvider = {
+      name: 'github_app',
+      async beginRegistration(ctx) {
+        return { challenge_url: `https://github.com/login/oauth/authorize?state=${ctx.nonce}` };
+      },
+      async exchangeOrVerify(_input, ctx): Promise<Attestation> {
+        return {
+          issuer: 'github.com',
+          subject: 'cross-tenant-1', // belongs to acctA
+          audience: ctx.audience,
+          display_handle: 'rt31-A-octo',
+          assurance_level: 'medium',
+          supports_revalidation: true,
+        };
+      },
+      async revalidate() {
+        return { still_valid: true };
+      },
+    };
+
+    const recoverPubkey = randomBytes(32).toString('base64url');
+    const begin = await recoverAccount(
+      {
+        provider: 'github_app',
+        account_id: acctB!.id, // target=B (cross-tenant)
+        client_pubkey: recoverPubkey,
+      },
+      {
+        postgres: fix.postgres,
+        identity_providers: [provider2],
+        redirect_uri: () => 'https://saas.example/callback',
+        audience: () => 'Iv1.regtest',
+        request_context: { ip_hash: Buffer.alloc(32, 9), user_agent: 'integration' },
+      },
+    );
+    const session = await fix.postgres.queryOne<{ nonce: string }>(
+      `SELECT nonce FROM agent_registration_sessions WHERE poll_token = $1`,
+      [begin.poll_token],
+    );
+
+    const cb = await callback(
+      { provider: 'github_app', state: session!.nonce, code: 'gho_stub' },
+      {
+        postgres: fix.postgres,
+        kms: fix.kms,
+        identity_providers: [provider2],
+        request_context: { ip_hash: Buffer.alloc(32, 9), user_agent: 'integration' },
+      },
+    );
+    expect(cb.status).toBe('failed');
+    if (cb.status === 'failed') {
+      expect(cb.reason).toBe('identity_account_mismatch');
+    }
+    // No keys minted into account B from this attempt.
+    const keysAtB = await fix.postgres.queryOne<{ c: string }>(
+      `SELECT count(*)::text AS c FROM agent_api_keys WHERE account_id = $1`,
+      [acctB!.id],
+    );
+    expect(Number(keysAtB?.c ?? '0')).toBe(0);
   });
 });

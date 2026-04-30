@@ -44,8 +44,8 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - [x] `src/crypto/sealed-box.ts` — libsodium `crypto_box_seal` (X25519 + XSalsa20-Poly1305), 48 bytes overhead, async-init guard §2.6 / ADR-004
 - [x] `src/jobs/reaper.ts` — `reapRegistrationSessions` deletes sessions 1h past `expires_at` §3.6
 - [x] PKCE state binding + nonce single-use enforced via `agent_registration_sessions` schema (`nonce UNIQUE`, FOR UPDATE in callback) §2.2.2 / §6.2.1 RT-29
-- [ ] **Integration test**: full GitHub App registration end-to-end (RT-29, RT-31)
-- [ ] **Deliverable**: SaaS can let agents register accounts via GitHub OAuth
+- [x] **Integration test**: full GitHub App registration end-to-end (RT-29, RT-31) — `test/integration/registration.int.test.ts` (4 tests): happy path through callback + sealed-payload decrypt + `validateKey` round-trip; RT-29 single-use nonce replay; RT-31 audience-mismatch (lying provider) and RT-31 cross-tenant recovery (`identity_account_mismatch`)
+- [x] **Deliverable**: SaaS can let agents register accounts via GitHub OAuth
 
 ## Milestone M3 — Rotation + Revocation + Idempotency (SPEC §11.2 M3)
 
@@ -58,8 +58,8 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - [ ] `src/middleware/idempotency.ts` — wrap mutation routes (deferred: routes call `tierBIdempotent` directly in M3)
 - [x] `src/jobs/reconcile-idempotency.ts` — observer with 5 attempts / 30 min cap, page-on-call hook, committed/not_found/indeterminate handling §5.1.2
 - [x] Cache invalidation pipeline — `src/distributed/cache-invalidation.ts` with `invalidateKey` (DEL + PUBLISH) and `invalidateAccountKeys` (Postgres-authoritative walk + per-key invalidation) §5.3.4 / §5.3.5
-- [ ] Integration tests: post-revoke validation (RT-26), idempotency replay mismatch (RT-27), concurrent rotation race
-- [ ] **Deliverable**: rotation/revocation atomic; observer reconciles unknowns
+- [x] Integration tests: post-revoke validation (RT-26 in `validate-key.int.test.ts`), idempotency replay mismatch (RT-27 in `idempotency.int.test.ts`), concurrent rotation race (`§3.5` trigger in `rotation.int.test.ts`)
+- [x] **Deliverable**: rotation/revocation atomic; observer reconciles unknowns
 
 ## Milestone M4 — Webhooks + reconciliation (SPEC §11.2 M4)
 
@@ -146,8 +146,8 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - **Unit tests**: 274 passing across 37 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
-- **Integration**: 58 passing against real Postgres 16 + Redis 7
-  (testcontainers, ~63 s):
+- **Integration**: 60 passing against real Postgres 16 + Redis 7
+  (testcontainers, ~68 s):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
     fallback, invalid_secret rejection.
   - revoke.int (2): Tier B revoke writes log + bumps epoch + invalidates
@@ -155,8 +155,12 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
   - webhook.int (4): cascade revoke (active + rotating keys + account
     suspension); RT-6 replay returns 'duplicate'; RT-30 collision raises
     onAlert; bad HMAC writes nothing to agent_webhook_events.
-  - registration.int (2): full /begin → /callback → /status flow; sealed
-    payload decrypts to validate-able key; replay /callback rejected.
+  - registration.int (4): full /begin → /callback → /status flow; sealed
+    payload decrypts to validate-able key; RT-29 replay /callback rejected
+    (single-use nonce); RT-31 audience-mismatch (lying provider) →
+    audience_mismatch + zero rows minted; RT-31 cross-tenant recovery
+    (target=B but identity belongs to A) → identity_account_mismatch +
+    zero keys at B.
   - rotation.int (2): planned rotation transitions old → 'rotating' with
     grace + creates new active key; concurrent rotation race resolves via
     §3.5 unique_violation trigger.
