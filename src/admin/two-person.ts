@@ -97,7 +97,36 @@ export function verifyCoSignature(
   if (!/^[0-9a-f]{64}$/.test(signature_hex)) {
     throw new AgentAuthError(401, 'invalid_request', 'co_signer_signature_malformed');
   }
-  const expected = signCoSignerEnvelope(envelope, internal_secret);
+  // SPEC §8.1 / RT-10: the canonical bytes signed by the co-signer
+  // MUST match the envelope's part fields. Without this guard, an
+  // attacker could keep a previously-signed canonical (e.g. for
+  // `flush-cache *`) and rewrite envelope.op/target to redirect the
+  // signature at a destructive op (`close-account acc-victim`). The
+  // cli.ts dispatcher then checks `envelope.op === input.command` —
+  // both are the new (attacker-chosen) op — and proceeds with a
+  // signature that was never issued for that command. We reconstruct
+  // canonical from the parts and refuse to validate if the caller's
+  // canonical disagrees.
+  const reconstructed = [
+    envelope.op,
+    envelope.target,
+    String(envelope.timestamp),
+    envelope.nonce,
+    envelope.initiator,
+    envelope.payload_sha256,
+  ].join('\n');
+  if (reconstructed !== envelope.canonical) {
+    throw new AgentAuthError(
+      401,
+      'invalid_request',
+      'co_signer_canonical_mismatch',
+    );
+  }
+  // HMAC over the reconstructed canonical — defense in depth even if
+  // a future change forgot the equality check above.
+  const expected = createHmac('sha256', internal_secret)
+    .update(reconstructed)
+    .digest('hex');
   const ok = timingSafeEqual(
     Buffer.from(expected, 'hex'),
     Buffer.from(signature_hex, 'hex'),

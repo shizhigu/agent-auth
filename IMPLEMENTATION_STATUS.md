@@ -165,7 +165,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Test summary at HEAD
 
-- **Unit tests**: 329 passing across 44 suites, ~930 ms wall (includes
+- **Unit tests**: 330 passing across 44 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
 - **Integration**: 87 passing against real Postgres 16 + Redis 7
@@ -515,3 +515,20 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
      non-finite or non-positive `ttl_seconds` with 400
      invalid_request. Defense-in-depth — current call sites
      don't pass user input here, but a future one might.
+  26. **§8.1 / RT-10 co-signer envelope substitution** —
+     `verifyCoSignature` HMAC-signed `envelope.canonical` from the
+     caller without checking it matched the envelope's part
+     fields (op, target, timestamp, nonce, initiator,
+     payload_sha256). Attack: take a co-signer's signature for a
+     benign op (e.g. flush-cache *) and reuse it on an envelope
+     whose canonical matches the benign op but whose `op` /
+     `target` parts have been rewritten to a destructive op
+     (close-account acc-victim). cli.ts's
+     `envelope.op === input.command` guard sees the rewritten op
+     vs the dispatcher's input — both attacker-chosen — so it
+     dispatches the destructive command with a signature the
+     co-signer never issued for it. Fix: reconstruct canonical
+     from the part fields, reject on mismatch
+     (`co_signer_canonical_mismatch`), and HMAC over the
+     reconstructed bytes. Unit regression demonstrates the
+     attack pre-fix and validates the defense.
