@@ -165,7 +165,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Test summary at HEAD
 
-- **Unit tests**: 330 passing across 44 suites, ~930 ms wall (includes
+- **Unit tests**: 333 passing across 45 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
 - **Integration**: 87 passing against real Postgres 16 + Redis 7
@@ -532,3 +532,12 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
      (`co_signer_canonical_mismatch`), and HMAC over the
      reconstructed bytes. Unit regression demonstrates the
      attack pre-fix and validates the defense.
+  27. **§3.16 PostgresAdapter role SQL injection (defense in
+     depth)** — `acquire()` interpolates `${this.role}` into
+     `SET ROLE ${role}` on every checkout. The TypeScript
+     `AppRole` union is the primary gate; a SaaS bypassing it
+     via `as any` could SQL-inject (e.g. role =
+     `agent_auth_app; DROP TABLE agent_accounts; --`). Fix adds
+     a runtime whitelist check at constructor time. Unit
+     regression covers all four allowed roles + a malicious
+     value (rejection assertion).

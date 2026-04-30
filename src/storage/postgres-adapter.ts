@@ -36,13 +36,29 @@ export interface QueryOptions {
   readonly statement_timeout_ms?: number;
 }
 
+const ALLOWED_ROLES: ReadonlySet<AppRole> = new Set<AppRole>([
+  'agent_auth_app',
+  'agent_auth_admin',
+  'agent_auth_readonly',
+  'agent_auth_migrator',
+]);
+
 export class PostgresAdapter {
   private readonly pool: Pool;
   private readonly role: AppRole;
   private readonly applicationName: string;
 
   constructor(cfg: PostgresAdapterConfig) {
-    this.role = cfg.role ?? 'agent_auth_app';
+    const role = cfg.role ?? 'agent_auth_app';
+    // Defense in depth (SPEC §3.16): the role is interpolated into
+    // `SET ROLE ${role}` on every checkout, so a misconfigured value
+    // (e.g. via `as any`) could SQL-inject. The TypeScript type is the
+    // primary gate; this runtime check stops anything that slipped past
+    // a `cfg as PostgresAdapterConfig` cast.
+    if (!ALLOWED_ROLES.has(role)) {
+      throw new Error(`PostgresAdapter: role must be one of ${[...ALLOWED_ROLES].join(', ')}`);
+    }
+    this.role = role;
     this.applicationName = cfg.application_name ?? `agent-auth/${this.role}`;
     this.pool = new Pool({
       ...cfg.pool,
