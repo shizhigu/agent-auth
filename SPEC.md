@@ -4872,6 +4872,13 @@ Every architectural decision below was made over the 13-round codex audit cycle.
 **Drivers**: Round-13 codex literal verdict: "Stop iterating. Yes."
 **Consequence**: Spec is implementation-ready; further value comes from implementation tests + real-world operational data.
 
+## ADR-014: Resolve tierBCommit vs tierBIdempotent error contract
+
+**Decision**: `tierBCommit` (§4.3) is the only place that converts raw `TierBTimeoutError` / pg `XX098` to `ServiceUnavailableError(durability_unconfirmed | durability_unavailable)`. `tierBIdempotent` (§5.1.1) catches that already-converted error (or, defensively, the raw `TierBTimeoutError` if a caller bypasses `tierBCommit`), persists `state='unknown'` on the idempotency row, and re-throws as `ServiceUnavailableError(idempotency_unknown_outcome)` so the caller knows the idempotency observer (§5.1.2) will reconcile.
+
+**Drivers**: SPEC §4.3 and §5.1.1 each specify a `catch (err) { if (err instanceof TierBTimeoutError)` clause but the natural composition (idempotency wraps tierBCommit) means only one of them can see the raw error. Implementation requires picking a single owner.
+**Consequence**: Idempotency-aware Tier B routes (§2.7.2 emergency rotate, §2.8 revoke, RB-2 cascade suspend, etc.) get a deterministic 503 with the idempotency-related code; non-idempotent Tier B paths surface the durability-related code from §4.3. Both paths still result in `state='unknown'` rows the observer can reconcile.
+
 ---
 
 **End of SPEC.md**

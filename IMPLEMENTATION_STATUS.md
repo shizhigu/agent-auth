@@ -51,13 +51,13 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 - [ ] `src/routes/rotate-key.ts` — planned grace + emergency §2.7
 - [ ] `src/routes/revoke.ts` §2.8
-- [ ] `src/distributed/revocation-epoch.ts` — epoch bump + Redis Lua MAX §5.3.2
-- [ ] `src/distributed/revocation-barrier.ts` — post-commit LSN capture §4.4.2
-- [ ] `src/distributed/tier-b-commit.ts` — synchronous_commit wrapper, timeout handling §4.3
-- [ ] `src/reliability/idempotency.ts` — two-phase reservation + observer §5.1.1, §5.1.2
-- [ ] `src/middleware/idempotency.ts` — wrap mutation routes
-- [ ] `src/jobs/reconcile-idempotency.ts` — unknown→completed/failed/manual_required observer §5.1.2
-- [ ] Cache invalidation pipeline (DEL + PUBLISH) §5.3.4
+- [x] `src/distributed/revocation-epoch.ts` — `bumpEpochInTx(client, redis)` advances Postgres singleton + pushes via Redis Lua MAX §5.3.2
+- [x] `src/distributed/revocation-barrier.ts` — `captureBarrierAfterCommit` reads `pg_current_wal_insert_lsn()` + advances barrier; `readAuthoritativeBarrier` for secondary regions §4.4.2
+- [x] `src/distributed/tier-b-commit.ts` — `tierBCommit` race + Postgres XX098 detection; `tierBTransaction` sets `synchronous_commit='remote_apply'` §4.3
+- [x] `src/reliability/idempotency.ts` — `tierBIdempotent` two-phase reservation; `canonicalRequestHash` deep-sort SHA-256 §5.1.1
+- [ ] `src/middleware/idempotency.ts` — wrap mutation routes (deferred: routes call `tierBIdempotent` directly in M3)
+- [x] `src/jobs/reconcile-idempotency.ts` — observer with 5 attempts / 30 min cap, page-on-call hook, committed/not_found/indeterminate handling §5.1.2
+- [x] Cache invalidation pipeline — `src/distributed/cache-invalidation.ts` with `invalidateKey` (DEL + PUBLISH) and `invalidateAccountKeys` (Postgres-authoritative walk + per-key invalidation) §5.3.4 / §5.3.5
 - [ ] Integration tests: post-revoke validation (RT-26), idempotency replay mismatch (RT-27), concurrent rotation race
 - [ ] **Deliverable**: rotation/revocation atomic; observer reconciles unknowns
 
@@ -128,4 +128,4 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Notes / deviations / blockers
 
-(Populate as iterations progress. Keep entries dated.)
+- **2026-04-30 (M3)**: Resolved internal SPEC tension between §4.3 (tierBCommit converts TierBTimeoutError → ServiceUnavailableError) and §5.1.1 (tierBIdempotent's `catch (err) { if (err instanceof TierBTimeoutError)` block expected the raw class). Picked `tierBCommit` as the sole converter and added **ADR-014** in Appendix B. `tierBIdempotent` now catches the converted ServiceUnavailableError(durability_unconfirmed | durability_unavailable), persists `state='unknown'`, and re-throws `ServiceUnavailableError(idempotency_unknown_outcome)`. Net effect on caller contract is identical (still 503), but only this composition produces a deterministic outcome regardless of which clause "wins".
