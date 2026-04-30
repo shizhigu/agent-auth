@@ -44,6 +44,10 @@ export interface ProcessAgentJobsDeps {
   readonly batch_size?: number;
   /** Custom handlers keyed by `kind`. Override built-in or extend. */
   readonly extra_handlers?: Readonly<Record<string, JobHandler>>;
+  /** Lease timeout in ms; rows stuck in `status='running'` past this
+   *  duration get reclaimed by the next worker (handles crashed
+   *  workers). Default 5 min. */
+  readonly lease_timeout_ms?: number;
   /** Now for tests. */
   readonly now?: () => Date;
   /** Optional alert hook for stuck / dead-lettered jobs. */
@@ -88,17 +92,25 @@ export async function processAgentJobs(
   let dead = 0;
   let inspected = 0;
 
+  const lease_ms = deps.lease_timeout_ms ?? 5 * 60 * 1000;
+
   for (let i = 0; i < batch; i++) {
     // 1) Lock + claim a single runnable job. Each iteration is its own
     //    short tx — keeps the row lock window tiny.
+    //
+    //    Eligible rows: pending OR (running AND lease expired). The
+    //    second branch reclaims jobs whose worker died mid-run; the
+    //    `agent_jobs_stuck` index supports the lease check.
     const claim = await deps.postgres.transaction(async (client) => {
       const row = await client.query<AgentJobRow>(
         `SELECT id::text AS id, kind, payload, attempts, max_attempts
            FROM agent_jobs
-          WHERE status = 'pending' AND run_at <= now()
+          WHERE (status = 'pending' AND run_at <= now())
+             OR (status = 'running' AND locked_at < now() - ($1 || ' milliseconds')::interval)
           ORDER BY id ASC
           FOR UPDATE SKIP LOCKED
           LIMIT 1`,
+        [String(lease_ms)],
       );
       const j = row.rows[0];
       if (!j) return null;

@@ -74,6 +74,36 @@ describe('integration: agent_jobs worker (SPEC §3.15)', () => {
     expect(await fix.redis_client.get(KEY_PREFIX_KEY + key_id)).toBeNull();
   });
 
+  it('lease-expiry: a row stuck in `running` past the lease gets reclaimed by the next worker', async () => {
+    // Plant a job already in 'running' status with a stale locked_at —
+    // simulating a worker that crashed mid-job. processAgentJobs must
+    // pick it up and re-run.
+    const key_id = 'agk_lease_test';
+    await admin.query(
+      `INSERT INTO agent_jobs (kind, payload, status, locked_at, locked_by)
+       VALUES ('cache_invalidate_keys',
+               jsonb_build_object('key_ids', $1::jsonb),
+               'running', now() - interval '10 minutes', 'dead-worker')`,
+      [JSON.stringify([key_id])],
+    );
+    const out = await processAgentJobs({
+      postgres: admin,
+      redis: fix.redis,
+      worker_id: 'live-worker',
+      lease_timeout_ms: 60_000, // 1 min lease — the stale row is past it
+    });
+    expect(out.completed).toBeGreaterThanOrEqual(1);
+    const j = await admin.queryOne<{ status: string; locked_by: string | null }>(
+      `SELECT status, locked_by FROM agent_jobs
+        WHERE payload->'key_ids' ? $1
+        ORDER BY id DESC LIMIT 1`,
+      [key_id],
+    );
+    expect(j?.status).toBe('completed');
+    // locked_by cleared on completion.
+    expect(j?.locked_by).toBeNull();
+  });
+
   it('SKIP LOCKED: a second concurrent worker does not double-claim the same row', async () => {
     const key_id = 'agk_skiplock_test';
     await admin.query(

@@ -213,6 +213,42 @@ describe('processAgentJobs (SPEC §3.15)', () => {
     expect(out.inspected).toBe(0);
   });
 
+  it('claim SQL includes lease-expiry branch so dead-worker rows get reclaimed', async () => {
+    // The FakePg returns the first pending row regardless of WHERE
+    // clause, so this test asserts the SQL TEXT contains the
+    // `status = 'running' AND locked_at < now() - lease` branch
+    // (which is the regression-prevention shape — the lease handling
+    // itself is exercised end-to-end against real Postgres).
+    const pg = new FakePg();
+    const redis = new FakeRedis();
+    const captured: string[] = [];
+    // Override query to capture the SELECT text.
+    const origQuery = pg.query.bind(pg);
+    pg.query = (async (text: string, params?: ReadonlyArray<unknown>) => {
+      captured.push(text);
+      return origQuery(text, params);
+    }) as typeof pg.query;
+    pg.rows.push({
+      id: '99',
+      kind: 'cache_invalidate_keys',
+      payload: { key_ids: [] },
+      attempts: 0,
+      max_attempts: 5,
+      status: 'pending',
+      last_error: null,
+      locked_by: null,
+    });
+    await processAgentJobs({
+      postgres: pg as unknown as PostgresAdapter,
+      redis: redis as unknown as RedisAdapter,
+      lease_timeout_ms: 60_000,
+    });
+    const select = captured.find((s) => /SELECT id::text/.test(s));
+    expect(select).toBeDefined();
+    expect(select!).toMatch(/status = 'pending'/);
+    expect(select!).toMatch(/status = 'running' AND locked_at <[^$]*now\(\)/);
+  });
+
   it('cache_invalidate_keys ignores non-string / non-agk_ entries (defensive)', async () => {
     const pg = new FakePg();
     const redis = new FakeRedis();
