@@ -53,6 +53,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - [x] `src/routes/revoke.ts` — Tier B inside `tierBIdempotent`; bumps epoch + appends revocation_log + updates per-key `last_revoke_lsn`; post-commit barrier capture + `invalidateKey`; scope check (`self:revoke` for own key, `admin:keys` for others on same account); 404 anti-enumeration §2.8
 - [x] `src/routes/list-keys.ts` — GET /api/agent-auth/keys (§10.1) — admin:keys-scoped projection of caller's account keys; revoked rows excluded; cross-account guard; integration + unit covered
 - [x] `src/routes/healthz.ts` — GET /api/agent-auth/healthz (§10.2) — reads authoritative barrier (timeline_id + last_lsn) + redis epoch; surfaces circuit-breaker states; 200 healthy / 503 unhealthy with `reasons[]` (postgres_unreachable, redis_unreachable, circuit_breaker_open:&lt;name&gt;)
+- [x] `src/routes/well-known.ts` — GET /.well-known/agent-auth (§10.1) — service discovery body composer; honors per-provider capability overrides; ValidationMode → `barrier_mode` string ('strict_uncached' or `bounded_stale_<n>s`); strips trailing slash from base_url
 - [x] `src/distributed/revocation-epoch.ts` — `bumpEpochInTx(client, redis)` advances Postgres singleton + pushes via Redis Lua MAX §5.3.2
 - [x] `src/distributed/revocation-barrier.ts` — `captureBarrierAfterCommit` reads `pg_current_wal_insert_lsn()` + advances barrier; `readAuthoritativeBarrier` for secondary regions §4.4.2
 - [x] `src/distributed/tier-b-commit.ts` — `tierBCommit` race + Postgres XX098 detection; `tierBTransaction` sets `synchronous_commit='remote_apply'` §4.3
@@ -145,7 +146,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Test summary at HEAD
 
-- **Unit tests**: 282 passing across 39 suites, ~930 ms wall (includes
+- **Unit tests**: 287 passing across 40 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
 - **Integration**: 69 passing against real Postgres 16 + Redis 7
