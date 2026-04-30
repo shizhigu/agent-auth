@@ -25,11 +25,11 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - [x] `src/crypto/audit-hash.ts` — canonicalAuditText + computeRowHash + verifyChain (mirrors §3.8 trigger)
 - [x] `src/crypto/pkce.ts` — generatePkcePair + deriveChallenge (RFC 7636 §4.1, S256)
 - [x] `src/middleware/validate-key.ts` — full validation flow §5.3.3 (local → Redis → Postgres, epoch invalidation, dual-pepper HMAC)
-- [ ] `src/middleware/express-adapter.ts` + `src/middleware/hono-adapter.ts`
+- [x] `src/middleware/express-adapter.ts` + `src/middleware/hono-adapter.ts` — bearer extraction, X-Request-Id, onAccept/onReject hooks, docs_url_base, structured error mapping
 - [x] `src/cache/local-cache.ts` — LRU 1000 + 30 s TTL + injectable clock §5.3.1
 - [x] `src/config.ts` — `AgentAuthConfig` type + `resolveConfig()` defaults §11.4
-- [ ] Unit tests for: validation flow, agent-context immutability, error mapping, hmac-pepper dual-window, hash chain canonicalization
-- [ ] **Deliverable**: SaaS can mount middleware and validate manually-inserted keys (per §11.2 M1)
+- [x] Unit tests for: validation flow, agent-context immutability, error mapping, hmac-pepper dual-window, hash chain canonicalization, LRU/TTL cache, Redis epoch monotonicity, PKCE S256 (RFC 7636 vector), Express + Hono middleware end-to-end (94 unit tests, all green)
+- [x] **Deliverable**: SaaS can mount middleware and validate manually-inserted keys (per §11.2 M1)
 
 ## Milestone M2 — GitHub App registration (SPEC §11.2 M2)
 
