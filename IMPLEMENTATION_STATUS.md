@@ -92,7 +92,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - [x] LSN barrier protocol — post-commit capture in `captureBarrierAfterCommit`; revoke + emergency rotate + webhook cascade all advance the barrier §4.4.2
 - [x] Cross-region validation — `src/distributed/multi-region-barrier.ts` exposes `makeBarrierCheck` that validateKey can plug into via `barrier_check`; reads authoritative barrier from primary, gates local replay LSN, throws 503 region_replication_stale or failover_in_progress §4.4.3
 - [x] `scripts/post-promotion-reset.sh` — captures new LSN+timeline on freshly-promoted primary, advances barrier, FLUSHDBs Redis, emits promotion_completed audit event, touches readiness file §4.4.4
-- [ ] Integration tests: stale replica scenario, cross-region barrier, failover timeline mismatch (RT-18, RT-32, RT-34) — covered by unit tests; testcontainers integration suite lands with M7
+- [x] Integration tests: stale replica scenario, cross-region barrier, failover timeline mismatch (RT-18, RT-32, RT-34) — `test/integration/multi-region-barrier.int.test.ts` (7 tests) drives `makeBarrierCheck` against real authoritative barrier data with a thin local-side stub for `pg_is_in_recovery` / `pg_last_wal_replay_lsn` / `pg_control_checkpoint`
 - [x] **Deliverable**: multi-region active-passive with correct revocation visibility (route + barrier + RB-8 script)
 
 ## Milestone M7 — Audit + compliance (SPEC §11.2 M7)
@@ -146,8 +146,8 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - **Unit tests**: 274 passing across 37 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
-- **Integration**: 51 passing against real Postgres 16 + Redis 7
-  (testcontainers, ~57 s):
+- **Integration**: 58 passing against real Postgres 16 + Redis 7
+  (testcontainers, ~63 s):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
     fallback, invalid_secret rejection.
   - revoke.int (2): Tier B revoke writes log + bumps epoch + invalidates
@@ -218,6 +218,15 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
     with documentation_url; 401 invalid_secret (tampered secret);
     403 insufficient_scope from route-thrown require_scope routed
     through SaaS error handler.
+  - multi-region-barrier.int (7): `makeBarrierCheck` against real
+    authoritative barrier (advanced via `captureBarrierAfterCommit`)
+    with a thin local-side stub that only intercepts the three system
+    function reads — primary short-circuit (in_recovery=false), healthy
+    caught-up replica, replica ahead of barrier, RT-32 stale-replica +
+    fail_closed → 503 region_replication_stale, RT-32 stale-replica +
+    route_to_primary → RouteToPrimaryError, RT-34 timeline mismatch →
+    503 failover_in_progress (priority over LSN), monotonic barrier
+    advance after second WAL bump.
 - **Chaos**: 14 passing (~10 s):
   - redis-partition (2): RT-25 healthy + partitioned-Redis no-false-accept
     invariant via testcontainers stop().
