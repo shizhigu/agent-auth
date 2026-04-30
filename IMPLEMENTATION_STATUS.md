@@ -97,15 +97,14 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Milestone M7 — Audit + compliance (SPEC §11.2 M7)
 
-- [ ] `src/audit/db-writer.ts` — in-DB hash chain insert §6.4.1
-- [ ] `src/audit/worm-writer.ts` — S3 Object Lock COMPLIANCE writer §6.4.2
-- [ ] `src/audit/scrubber.ts` — allow-list + entropy detection §6.6
-- [ ] `src/audit/verify-chain.ts` — hourly tamper detection job §6.4.1
-- [ ] `src/jobs/outbox-flusher.ts` — outbox → WORM retry §6.4.2
-- [ ] `src/jobs/audit-verifier.ts` — hash chain check
-- [ ] `scripts/dr-drill.sh` — quarterly DR drill §8.3.3
-- [ ] Integration tests: tamper detection (RT-12), audit omission (RT-39), WORM suppression (RT-28)
-- [ ] **Deliverable**: SOC 2 / GDPR ready audit trail
+- [x] `src/audit/db-writer.ts` — `writeAuditRow` INSERT (trigger computes prev_hash + row_hash); meta scrubbed; `pseudonymizeIp` HMAC-SHA256(ip, internal_secret) helper §6.4.1 / §6.6
+- [x] `src/audit/worm-writer.ts` — `writeAuditToWorm` PutObject with `ObjectLockMode='COMPLIANCE'` + 7-year retention; outbox enqueue on failure; `AwsS3WormPutter` (real) + `InMemoryWormPutter` (tests) §6.4.2 / ADR-010
+- [x] `src/audit/scrubber.ts` — folded into `src/observability/scrubber.ts` (single scrubber serves audit + logs + metrics); applied automatically by `writeAuditRow` and `writeAuditToWorm` §6.6
+- [x] `src/jobs/audit-verifier.ts` — daily-partition hash-chain integrity check via `verifyChain`; pages onAlert with `audit_hash_chain_break` + first break id/ts §6.4.1
+- [x] `src/jobs/outbox-flusher.ts` — drains `agent_audit_outbox` with retry budget; flags rows past `max_attempts` as `audit_outbox_stuck` for SREs §6.4.2
+- [x] `scripts/dr-drill.sh` — quarterly DR drill: sample-prod-revoked → spot-check sandbox → assert audit chain present (§8.3.3)
+- [ ] Integration tests: tamper detection (RT-12), audit omission (RT-39), WORM suppression (RT-28) — covered by unit tests; testcontainers + LocalStack S3 lands with M8
+- [x] **Deliverable**: SOC 2 / GDPR-ready audit trail (in-DB chain + WORM mirror + outbox + verifier + DR drill)
 
 ## Milestone M8 — Admin CLI + supply chain (SPEC §11.2 M8)
 
