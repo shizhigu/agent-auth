@@ -23,7 +23,13 @@ export type RegistrationStatusResponse =
   | {
       readonly status: 'completed';
       readonly account_id: string;
-      readonly encrypted_payload: string;
+      /**
+       * Sealed-box payload (base64url) carrying the freshly issued key.
+       * SPEC §2.4: for kind='revalidate' (poll_token prefix `pav_`), no
+       * new key is issued — the field is `null` and the agent retries
+       * its original request with its EXISTING bearer.
+       */
+      readonly encrypted_payload: string | null;
       readonly is_first_key: boolean;
     }
   | {
@@ -99,17 +105,22 @@ export async function registrationStatus(
     throw new AgentAuthError(410, 'session_expired');
   }
 
-  // status === 'ready' — payload is in result_ciphertext.
-  if (!row.result_ciphertext) {
+  // status === 'ready' — payload is in result_ciphertext, EXCEPT for
+  // kind='revalidate' which (per SPEC §2.4) issues no key and stores no
+  // payload. The agent retries its original request with its existing
+  // bearer.
+  if (!row.account_id) {
     throw new AgentAuthError(500, 'internal_error');
   }
-  if (!row.account_id) {
+  if (row.kind !== 'revalidate' && !row.result_ciphertext) {
     throw new AgentAuthError(500, 'internal_error');
   }
   return {
     status: 'completed',
     account_id: row.account_id,
-    encrypted_payload: row.result_ciphertext.toString('base64url'),
+    encrypted_payload: row.result_ciphertext
+      ? row.result_ciphertext.toString('base64url')
+      : null,
     is_first_key: deriveIsFirstKey(row.kind),
   };
 }

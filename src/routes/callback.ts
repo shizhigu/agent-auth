@@ -314,7 +314,49 @@ export async function callback(
       return { status: 'failed' as const, reason: 'account_suspended_unsuspend_first' };
     }
 
-    // 6. Issue the new key.
+    // 6. SPEC §2.4: kind='revalidate' refreshes last_revalidated_at ONLY
+    //    — no new key is issued, no token is stored. The agent retries
+    //    its original request with its EXISTING bearer once the session
+    //    transitions to 'ready'. Other kinds (register / recover / add_key)
+    //    issue + seal a new key.
+    if (session.kind === 'revalidate') {
+      // last_revalidated_at was already bumped in case-C re-activation
+      // (line 280-287). For case-B (active identity, just refresh), do it
+      // here in the same txn.
+      await client.query(
+        `UPDATE agent_identities
+            SET last_revalidated_at = now()
+          WHERE id = $1`,
+        [identity_id],
+      );
+      // Mark session ready with NO sealed payload — the registration-status
+      // response will surface encrypted_payload=null so the SDK knows to
+      // retry with the existing key.
+      await client.query(
+        `UPDATE agent_registration_sessions
+            SET status = 'ready', account_id = $2, result_ciphertext = NULL
+          WHERE poll_token = $1`,
+        [session.poll_token, account_id],
+      );
+      await writeAuditRowOnClient(client, {
+        event_type: 'revalidate_callback_success',
+        endpoint: '/api/agent-auth/callback/:provider',
+        status_class: 2,
+        account_id,
+        identity_id,
+        meta: {
+          provider: provider.name,
+          session_kind: session.kind,
+        },
+      });
+      return {
+        status: 'success' as const,
+        account_id,
+        is_first_key: false,
+      };
+    }
+
+    // Non-revalidate kinds: issue + seal a new key.
     const issued = await issueNewKey(client, deps.kms, {
       account_id,
       issuing_identity_id: identity_id,

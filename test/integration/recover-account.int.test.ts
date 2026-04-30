@@ -194,9 +194,10 @@ describe('integration: /recover-account full flow (SPEC §2.9 / §2.2.2 case C)'
     expect(status.status).toBe('completed');
     if (status.status !== 'completed') return;
     expect(status.account_id).toBe(account_id);
+    expect(status.encrypted_payload).not.toBeNull();
 
     const cleartext = sealedOpen(
-      Buffer.from(status.encrypted_payload, 'base64url'),
+      Buffer.from(status.encrypted_payload!, 'base64url'),
       agentKp.publicKey,
       agentKp.secretKey,
     );

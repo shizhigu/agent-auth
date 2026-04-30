@@ -144,9 +144,10 @@ describe('integration: full registration flow (SPEC §2.2.2 + §2.6)', () => {
     if (status.status !== 'completed') return; // narrow
     expect(status.account_id).toBe(cb.account_id);
     expect(status.is_first_key).toBe(true);
+    expect(status.encrypted_payload).not.toBeNull();
 
     const cleartext = sealedOpen(
-      Buffer.from(status.encrypted_payload, 'base64url'),
+      Buffer.from(status.encrypted_payload!, 'base64url'),
       agentKp.publicKey,
       agentKp.secretKey,
     );
