@@ -10,19 +10,18 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 ## Milestone M1 — Core data model + validation (SPEC §11.2 M1)
 
 - [x] Project scaffolding: `package.json`, `tsconfig.json` (strict), vitest, ESLint, `.gitignore`
-- [ ] Postgres schema migrations (full DDL) — §3.3-3.16
-  - [ ] `0001_init.sql` — type domains, accounts, identities, api_keys, sessions, device_flows
-  - [ ] `0002_audit_partitions.sql` — `agent_audit_log` partitioned + hash chain trigger §3.8
-  - [ ] `0003_idempotency.sql` — `agent_idempotency` + transition trigger §3.13
-  - [ ] `0004_revocation.sql` — `agent_revocation_log`, `agent_revocation_epoch`, `agent_revocation_barrier`, `agent_recovery_approvals` §3.11-3.14
-  - [ ] `0005_jobs.sql` — `agent_jobs`, `agent_audit_outbox`, `agent_webhook_events`, `agent_webhook_replay_state` §3.9-3.10, §3.15
+- [x] Postgres schema migrations (full DDL) — §3.3-3.16
+  - [x] `0001_init.sql` — type domains, roles, accounts, identities, api_keys, jobs, registration_sessions, device_flows + triggers (rotation_inverse, sync_account_tier_to_keys)
+  - [x] `0002_audit.sql` — `agent_audit_log` partitioned + hash chain trigger §3.8 + `agent_webhook_events` §3.9 + `agent_webhook_replay_state` §3.10 + `agent_audit_outbox` §6.4.2
+  - [x] `0003_revocation.sql` — `agent_revocation_log`, `agent_revocation_epoch` (epoch monotonic trigger), `agent_revocation_barrier` (barrier+timeline monotonic trigger), `agent_recovery_approvals` §3.11-3.14
+  - [x] `0004_idempotency.sql` — `agent_idempotency` + transition trigger + terminal-row-immutable trigger §3.13
 - [x] `src/types.ts` — shared TypeScript domain types (tier, statuses, KeyCache, AgentContext, IdentityProvider, etc.)
 - [x] `src/errors.ts` — `AgentAuthError` class, `ServiceUnavailableError`, error code enum §10.4
 - [x] `src/agent-context.ts` — frozen `AgentContext` builder, no `req.user` (§6.3 confused-deputy)
-- [ ] `src/storage/postgres-adapter.ts` — pg Pool wrapper with role-aware connections (§3.16)
+- [x] `src/storage/postgres-adapter.ts` — pg Pool wrapper with role-aware connections + transaction helper (§3.16)
 - [ ] `src/storage/redis-adapter.ts` — ioredis wrapper, Lua script loader, pubsub
-- [ ] `src/storage/kms-adapter.ts` — AWS KMS wrapper (encrypt/decrypt, dual-pepper) §6.1.2
-- [ ] `src/crypto/hmac-pepper.ts` — HMAC-SHA256 with KMS-held pepper, dual-pepper rotation §6.1.1
+- [x] `src/storage/kms-adapter.ts` — AWS KMS wrapper (envelope encrypt/decrypt) + InMemoryKmsAdapter for tests, dual-pepper §6.1.2
+- [x] `src/crypto/hmac-pepper.ts` — HMAC-SHA256 with KMS-held pepper, dual-pepper rotation, constant-time-stable verification §6.1.1
 - [ ] `src/crypto/audit-hash.ts` — SHA-256 over canonical JSON (mirrors §3.8 trigger)
 - [ ] `src/crypto/pkce.ts` — PKCE S256 helpers
 - [ ] `src/middleware/validate-key.ts` — main validation flow (Redis → Postgres) §5.3.3
