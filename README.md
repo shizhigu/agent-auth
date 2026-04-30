@@ -1,9 +1,11 @@
 <div align="center">
 
-# agent-auth
+# Vouch
 
-**Production-grade auth rail for AI agents.**
-**Sits next to your existing human auth — never replaces it.**
+**Identity infrastructure for AI agents.**
+**Drop it next to your existing human auth — never replaces it.**
+
+<sub>The open-source engine ships as the `agent-auth` package on npm (v0.2). Hosted Vouch Cloud is on the [roadmap](#roadmap) for v1.0.</sub>
 
 [![CI](https://github.com/shizhigu/agent-auth/actions/workflows/ci.yml/badge.svg)](https://github.com/shizhigu/agent-auth/actions/workflows/ci.yml)
 [![Security](https://github.com/shizhigu/agent-auth/actions/workflows/security.yml/badge.svg)](https://github.com/shizhigu/agent-auth/actions/workflows/security.yml)
@@ -11,11 +13,9 @@
 [![Node.js 20+](https://img.shields.io/badge/Node.js-20%2B-brightgreen.svg)](https://nodejs.org)
 [![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Tests](https://img.shields.io/badge/tests-355%20unit%20%C2%B7%2094%20integration%20%C2%B7%2014%20chaos-success)](#testing)
-[![Maintained by shizhigu](https://img.shields.io/badge/maintained%20by-shizhigu-blue)](https://github.com/shizhigu)
-[![Contributions: issues only](https://img.shields.io/badge/contributions-issues%20only-yellow)](#contributing)
 
 [Status](#project-status) ·
-[Why](#why-agent-auth) ·
+[Why](#why-vouch) ·
 [Comparison](#comparison-vs-better-auth--auth0--clerk--nango) ·
 [Quick start](#quick-start) ·
 [How it works](#how-it-works) ·
@@ -28,24 +28,24 @@
 
 ## Project status
 
-**Server-side library: feature-complete (v0.1).** All 8 milestones shipped — `355` unit · `94` integration · `14` chaos tests passing at HEAD. Spec audited across 13 rounds with codex / GPT-5; final grade A (production-ready paying-customer level).
+**Server-side engine: feature-complete (v0.1).** All 8 milestones shipped — `355` unit · `94` integration · `14` chaos tests passing at HEAD. Spec audited across 13 rounds with codex / GPT-5; final grade A (production-ready paying-customer level).
 
 **What is NOT shipped yet** — and why this matters for you:
 
 | | Status | Plan |
 |---|---|---|
-| Published on npm | **No** — install today via `git clone && npm run build` | v0.2 |
-| Agent-side SDK (`@agent-auth/client`) | **No** — agents currently implement PKCE + sealed-box decrypt + bearer-key auto-rotation themselves | v0.2 |
-| CLI scaffolder (`npx create-agent-auth-app`) | **No** | v0.2 |
+| Published on npm (`agent-auth` package) | **No** — install today via `git clone && npm run build` | v0.2 |
+| Agent-side SDK (`@vouch/client`) | **No** — agents currently implement PKCE + sealed-box decrypt + bearer-key auto-rotation themselves | v0.2 |
+| CLI scaffolder (`npx create-vouch-app`) | **No** | v0.2 |
 | Reference end-to-end demo (SaaS + agent) | **No** — only SaaS-side examples | v0.2 |
-| Docs site (`agent-auth.dev`) | **No** — README + SPEC only | v0.2 |
+| Docs site (`vouch.dev`) | **No** — README + SPEC only | v0.2 |
 | Multi-provider identity (Google / GitLab / generic OIDC) | **No** — GitHub-only at v0.1 | v0.3 |
-| Migration runner (`agent-auth migrate up`) | **No** — apply `schema/migrations/*.sql` manually | v0.3 |
-| Hosted version (`agent-auth Cloud`) + admin dashboard | **No** — self-host only | v1.0 |
+| Migration runner (`vouch migrate up`) | **No** — apply `schema/migrations/*.sql` manually | v0.3 |
+| Vouch Cloud (hosted + admin dashboard) | **No** — self-host only | v1.0 |
 
 If you want to **try it today**, see [Quick start](#quick-start). If you want to **build production on top of it**, the realistic ETA is **v0.2 (~4 weeks)** when DX completes — the server-side core is solid, but the rough edges are real.
 
-## Why agent-auth
+## Why Vouch
 
 Today's "agent signup" stories don't hold up:
 
@@ -53,7 +53,7 @@ Today's "agent signup" stories don't hold up:
 - **Browser automation** (the "have the agent click around") is brittle, slow, and a security nightmare
 - **Sharing a human's password** is unauditable, can't be scoped, and can't be instantly revoked
 
-`agent-auth` solves this by giving the agent **its own first-class identity** — rooted in a human's existing GitHub login, scoped to a single tenant, with full audit trail and instant revocation. You drop the library into your SaaS backend; your existing human auth keeps working unchanged.
+Vouch solves this by giving the agent **its own first-class identity** — rooted in a human's existing GitHub login, scoped to a single tenant, with full audit trail and instant revocation. You drop the engine into your SaaS backend; your existing human auth keeps working unchanged.
 
 ```ts
 // Existing human auth — UNTOUCHED
@@ -70,23 +70,23 @@ app.get('/api/agent/v1/data', (req, res) => {
 
 ## Comparison vs Better Auth / Auth0 / Clerk / Nango
 
-`agent-auth` is **complementary** to existing auth tools, not a competitor. It plugs a gap none of them cover today.
+Vouch is **complementary** to existing auth tools, not a competitor. It plugs a gap none of them cover today.
 
 ### Quick map
 
 > - **Better Auth · Auth0 · Clerk · Lucia** → "humans log into your SaaS"
 > - **Nango · Arcade · Auth0 for AI Agents** → "your code calls third-party APIs (Slack, GDrive, …) on behalf of an authenticated human"
-> - **agent-auth (this)** → "AI agents register accounts on YOUR SaaS and get their own scoped API keys"
+> - **Vouch (this)** → "AI agents register accounts on YOUR SaaS and get their own scoped API keys"
 >
-> If you're building Acme SaaS and want Claude Code / Cursor / Codex to autonomously sign up for an Acme account on a human's behalf and call the Acme API: **agent-auth fills that gap**. None of the others do.
+> If you're building Acme SaaS and want Claude Code / Cursor / Codex to autonomously sign up for an Acme account on a human's behalf and call the Acme API: **Vouch fills that gap**. None of the others do.
 
 ### Detailed table
 
-| | **Better Auth · Lucia** | **Auth0 · Clerk** | **Nango · Arcade · Auth0-for-AI-Agents** | **agent-auth (this)** |
+| | **Better Auth · Lucia** | **Auth0 · Clerk** | **Nango · Arcade · Auth0-for-AI-Agents** | **Vouch (this)** |
 |---|---|---|---|---|
 | **Whose identity** | the human | the human | the human (token forwarded to 3rd-party APIs) | the agent itself |
 | **You are the…** | service humans log into | service humans log into | service that calls 3rd-party APIs | service the agent calls |
-| **Hosted option** | Better Auth Cloud | Yes (default) | Yes | No (self-host only at v0.1; Cloud is v1.0) |
+| **Hosted option** | Better Auth Cloud | Yes (default) | Yes | Vouch Cloud (v1.0); self-host only today |
 | **DB ownership** | your DB | their DB | your DB | your DB |
 | **Headless agent flow** | n/a | n/a | partial (token broker) | designed for it (PKCE + sealed-box) |
 | **API key issuance** | session cookies primarily | sessions / JWT / API keys | n/a | API keys (scoped, rotatable, instantly revocable) |
@@ -95,7 +95,7 @@ app.get('/api/agent/v1/data', (req, res) => {
 | **Self-hostable** | yes | no | yes (some) | yes (only mode at v0.1) |
 | **Supply-chain hardening** | varies | n/a | varies | OIDC publish + Sigstore + SBOM + Scorecard |
 
-### What agent-auth is NOT
+### What Vouch is NOT
 
 - Not a replacement for Clerk / Auth0 / Better Auth — those handle **human** auth.
 - Not browser automation — Browserbase / Skyvern occupy that space.
@@ -323,15 +323,15 @@ npm run bench
 
 ## Roadmap
 
-The server-side core is done; the next milestones are about **developer experience parity with Better Auth / Auth0**.
+The server-side engine is done; the next milestones are about **developer experience parity with Better Auth / Auth0**.
 
 ### v0.2 — DX completeness (next ~4 weeks)
 
 - [ ] **`agent-auth` published on npm** — currently dev-only
-- [ ] **`@agent-auth/client`** — agent-side SDK that wraps PKCE generation, sealed-box decrypt, polling, and bearer-key auto-rotation in **5 lines** of agent code
-- [ ] **`npx create-agent-auth-app`** — scaffolder with SaaS + agent templates ready to run
+- [ ] **`@vouch/client`** — agent-side SDK that wraps PKCE generation, sealed-box decrypt, polling, and bearer-key auto-rotation in **5 lines** of agent code
+- [ ] **`npx create-vouch-app`** — scaffolder with SaaS + agent templates ready to run
 - [ ] **Reference end-to-end demo** — Acme SaaS + a Claude Code / Cursor agent registering and calling APIs (deployable to fly.io / Railway in one command)
-- [ ] **Docs site at `agent-auth.dev`** — VitePress / Nextra with copy-paste recipes
+- [ ] **Docs site at `vouch.dev`** — VitePress / Nextra with copy-paste recipes
 - [ ] OTel tracing (`src/observability/tracing.ts`)
 - [ ] Idempotency middleware sugar (wraps `tierBIdempotent` for HTTP routes)
 - [ ] GitHub device-flow as alt registration path
@@ -340,12 +340,12 @@ The server-side core is done; the next milestones are about **developer experien
 
 - [ ] Generic OIDC provider — works against any standards-compliant IdP
 - [ ] Built-in providers: Google Workspace, GitLab, Microsoft Entra
-- [ ] **`agent-auth migrate up`** — first-class migration runner (replaces manual `psql -f`)
+- [ ] **`vouch migrate up`** — first-class migration runner (replaces manual `psql -f`)
 - [ ] Type inference end-to-end (server-defined scopes flow into agent-side `useAgent()` hook)
 
-### v1.0 — Hosted + dashboard
+### v1.0 — Vouch Cloud
 
-- [ ] **agent-auth Cloud** — managed control plane (you keep your DB; we run the validation hot path)
+- [ ] **Vouch Cloud** — managed control plane (you keep your DB; we run the validation hot path)
 - [ ] **Admin web dashboard** — keys / agents / audit / runbooks UI (today: CLI only)
 - [ ] Customer reference deployment with SOC 2 attestation
 - [ ] 30-day staging replay automated against production-shape data
@@ -374,20 +374,21 @@ Node.js 20+ (Bun-compatible) · TypeScript 5.4 strict · libsodium · pg · iore
 
 ## Contributing
 
-This is a personal project, maintained by [@shizhigu](https://github.com/shizhigu) alone.
+Vouch is **roadmap-driven**. The current focus is v0.2 (DX completeness — see [Roadmap](#roadmap)). Contributors are very welcome:
 
-**Bug reports and security findings are very welcome** — open an [Issue](https://github.com/shizhigu/agent-auth/issues), or for vulnerabilities follow [`SECURITY.md`](SECURITY.md) (private disclosure).
+- **Bug reports and security findings** — open an [Issue](https://github.com/shizhigu/agent-auth/issues), or for vulnerabilities follow [`SECURITY.md`](SECURITY.md) (private advisory).
+- **Bug-fix PRs** — please open an issue first so we can align on the fix shape; PRs with linked issues get fast-tracked.
+- **Feature PRs** — we evaluate against the roadmap. For anything that touches `SPEC.md`, the threat model, or `src/crypto/` / `src/middleware/validate-key.ts` / `src/distributed/`, please open an issue first to discuss the design before writing code. An ADR in Appendix B is required for spec-touching changes (see ADR-001..ADR-014 for the format).
+- **Good first issues** — labeled in the [issue tracker](https://github.com/shizhigu/agent-auth/issues?q=is%3Aopen+label%3A%22good+first+issue%22).
 
-**Feature PRs are not actively solicited.** Because this is an auth library, the supply-chain risk of merging unreviewed code is high and I don't have the bandwidth to review at the depth this codebase requires. If you have a small bug-fix PR, please **open an issue first** so we can agree on the approach before you write code. PRs without a linked issue will likely be closed.
-
-If you want to extend or fork this for your own use, the MIT license gives you everything you need — go for it.
+We aim to respond to issues and PRs within **a few business days**. Auth is supply-chain-sensitive — review depth matters more than throughput, so please be patient if a PR sits in review for a beat.
 
 ## License
 
-[MIT](LICENSE) © 2026 Shizhi Gu
+[MIT](LICENSE) © 2026 Agentic Flow LLC
 
 ---
 
 <div align="center">
-<sub><a href="https://github.com/shizhigu">github.com/shizhigu</a> · <a href="https://szgu.dev">szgu.dev</a></sub>
+<sub><b>Vouch</b> is built by <a href="https://github.com/shizhigu">Agentic Flow LLC</a>. The open-source engine ships as <code>agent-auth</code> on npm (v0.2). Hosted Vouch Cloud is on the <a href="#roadmap">roadmap</a>.</sub>
 </div>

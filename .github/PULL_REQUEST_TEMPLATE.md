@@ -1,17 +1,19 @@
-<!-- Thanks for your interest in agent-auth!
+<!-- Thanks for contributing to Vouch!
 
-Before you spend time on a PR, please read the Contributing section of the
-README:
-https://github.com/shizhigu/agent-auth#contributing
+Vouch is roadmap-driven (see README → Roadmap). Linking an issue helps us
+align on the change shape before review:
 
-TL;DR — this is a personal project and feature PRs without a prior issue
-discussion will likely be closed. Bug fixes are welcome but please link
-the issue you opened first.
+- Bug-fix PRs: linked issue → fast-tracked.
+- Feature PRs: please open an issue first to align on the design.
+- SPEC.md / src/crypto/ / src/middleware/validate-key.ts / src/distributed/
+  changes: discuss in an issue first; ADR required for spec touches.
+
+Full guidelines: https://github.com/shizhigu/agent-auth#contributing
 -->
 
 ## Linked issue
 
-Closes #<!-- issue number — required, see Contributing -->
+Closes #<!-- issue number — strongly preferred for non-trivial changes -->
 
 ## Summary
 
@@ -20,9 +22,10 @@ Closes #<!-- issue number — required, see Contributing -->
 ## What kind of change
 
 - [ ] Bug fix (linked issue exists)
+- [ ] Feature aligned with the v0.2 / v0.3 roadmap
 - [ ] Documentation
 - [ ] Test-only change
-- [ ] Other (please describe; note that feature PRs typically need prior issue discussion)
+- [ ] Other
 
 ## Test plan
 

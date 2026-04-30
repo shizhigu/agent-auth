@@ -6,9 +6,10 @@ body:
   - type: markdown
     attributes:
       value: |
-        This project is maintained by one person and not actively soliciting
-        feature PRs. **Please open a discussion here first** so we can agree
-        on the approach before you spend time on code — see the
+        Vouch is roadmap-driven. **Please open a discussion here first**
+        so we can agree on the approach before you spend time on code —
+        especially for changes touching `SPEC.md`, the threat model, or
+        crypto / validate-key / distributed paths. See the
         [Contributing](https://github.com/shizhigu/agent-auth#contributing)
         section of the README for context.
 
@@ -41,7 +42,7 @@ body:
     attributes:
       label: Checks
       options:
-        - label: I have read the Contributing section and understand feature PRs are not actively solicited.
+        - label: I have read the Contributing section and understand the project is roadmap-driven.
           required: true
         - label: I am willing to discuss the approach before writing code.
           required: true

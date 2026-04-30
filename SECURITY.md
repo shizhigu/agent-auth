@@ -1,11 +1,17 @@
 # Security policy
 
+This is the security policy for **Vouch** — the identity infrastructure
+for AI agents, distributed today as the open-source `agent-auth` package
+on GitHub.
+
 ## Reporting a vulnerability
 
 **Do not file public issues for security reports.**
 
-Email `security@szgu.dev` (or, until that mailbox exists, open a GitHub
-*draft security advisory* on the repo). Include:
+Open a GitHub *draft security advisory* on the repo (Security tab →
+Advisories → New draft) — that keeps disclosure private until we
+coordinate. As an alternative, you can email the maintainer team via
+the address listed in `package.json`. Include:
 
 - A short description of the issue.
 - Steps to reproduce, with a minimal code sample if possible.
@@ -13,7 +19,10 @@ Email `security@szgu.dev` (or, until that mailbox exists, open a GitHub
 - Whether you believe the issue is exploitable in production deployments
   vs. only in a contrived test environment.
 
-We aim to acknowledge reports within **2 business days**.
+We aim to acknowledge reports within **2 business days**. Vouch is
+small (one full-time maintainer at the moment), so urgent triage may
+take a few extra hours outside business windows — please escalate via
+the advisory thread if the severity warrants it.
 
 ## Disclosure timeline
 
@@ -49,11 +58,11 @@ Out-of-scope:
 
 ## Threat model
 
-The lib's threat model is documented in **SPEC.md Part VI**. Each of the
+The threat model is documented in **SPEC.md Part VI**. Each of the
 44 RT-* threats is mapped to a mitigation, and the test suite exercises
-33 of them automatically (see `docs/PRE_RELEASE_CHECKLIST.md`). The
+32 of them automatically (see `docs/PRE_RELEASE_CHECKLIST.md`). The
 remaining 11 are SaaS-side or operational controls outside the test
-harness.
+harness; 1 is reserved upstream.
 
 ## Supported versions
 

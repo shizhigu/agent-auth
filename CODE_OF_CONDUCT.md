@@ -34,14 +34,14 @@ Examples of unacceptable behavior:
 
 ## Enforcement
 
-Instances of unacceptable behavior may be reported by opening a
-GitHub issue and adding a comment requesting a private channel, or
-by contacting the maintainer directly via the repository's Security
-tab (Security Advisory). All complaints will be reviewed and
-investigated and will result in a response that is deemed necessary
-and appropriate to the circumstances.
+Instances of unacceptable behavior may be reported to the Vouch team
+by opening a GitHub issue and asking for a private channel, or
+directly via the repository's Security tab (Security Advisory) for
+sensitive reports. All complaints will be reviewed and investigated
+and will result in a response that is deemed necessary and appropriate
+to the circumstances.
 
-The maintainer is obligated to maintain confidentiality with regard
+The Vouch team is obligated to maintain confidentiality with regard
 to the reporter of an incident.
 
 ## Attribution

@@ -1,9 +1,37 @@
 {
   "name": "agent-auth",
   "version": "0.0.0-dev",
-  "description": "Production-grade auth rail for AI agents (sits next to existing human auth).",
+  "description": "Vouch — identity infrastructure for AI agents. Drop-in auth rail that sits next to your existing human auth, never replaces it.",
+  "keywords": [
+    "ai-agents",
+    "agent-auth",
+    "vouch",
+    "authentication",
+    "authorization",
+    "api-keys",
+    "oauth",
+    "github-app",
+    "audit-log",
+    "kms",
+    "hmac",
+    "libsodium",
+    "rate-limiting",
+    "postgres",
+    "redis",
+    "typescript",
+    "security",
+    "saas"
+  ],
   "license": "MIT",
-  "author": "Shizhi Gu",
+  "author": "Agentic Flow LLC",
+  "homepage": "https://github.com/shizhigu/agent-auth#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shizhigu/agent-auth.git"
+  },
+  "bugs": {
+    "url": "https://github.com/shizhigu/agent-auth/issues"
+  },
   "engines": {
     "node": ">=20.0.0"
   },
