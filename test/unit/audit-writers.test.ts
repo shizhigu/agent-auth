@@ -256,6 +256,45 @@ describe('writeAuditToWorm + outbox fallback (SPEC §6.4.2)', () => {
     expect(db.outbox[0]!.event_id).toBe('2');
     expect(db.outbox[0]!.flushed_at).toBeNull();
   });
+
+  it('RT-28: tier=B PutObject failure throws audit_unavailable AND enqueues outbox row', async () => {
+    const putter = new InMemoryWormPutter();
+    putter.shouldFailNext = 1;
+    await expect(
+      writeAuditToWorm(
+        asAdapter(db),
+        { bucket: 'b', kms_key_id: 'k', retention_years: 7, putter },
+        {
+          id: '3',
+          ts: new Date('2026-04-30T12:00:00Z'),
+          event_type: 'tier_b_revoke',
+          row_hash: 'a'.repeat(64),
+          prev_hash: 'b'.repeat(64),
+          tier: 'B',
+        },
+      ),
+    ).rejects.toMatchObject({ status: 503, code: 'audit_unavailable' });
+    // Even on throw, the outbox row is durable so retries can drain.
+    expect(db.outbox).toHaveLength(1);
+    expect(db.outbox[0]!.event_id).toBe('3');
+  });
+
+  it('tier=A (default) failure does NOT throw: best-effort returns outboxed', async () => {
+    const putter = new InMemoryWormPutter();
+    putter.shouldFailNext = 1;
+    const out = await writeAuditToWorm(
+      asAdapter(db),
+      { bucket: 'b', kms_key_id: 'k', retention_years: 7, putter },
+      {
+        id: '4',
+        ts: new Date('2026-04-30T12:00:00Z'),
+        event_type: 'tier_a_validate',
+        row_hash: 'a'.repeat(64),
+        prev_hash: 'b'.repeat(64),
+      },
+    );
+    expect(out.status).toBe('outboxed');
+  });
 });
 
 describe('flushAuditOutbox (SPEC §6.4.2)', () => {

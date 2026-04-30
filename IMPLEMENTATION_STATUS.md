@@ -100,8 +100,9 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Milestone M7 — Audit + compliance (SPEC §11.2 M7)
 
-- [x] `src/audit/db-writer.ts` — `writeAuditRow` INSERT (trigger computes prev_hash + row_hash); meta scrubbed; `pseudonymizeIp` HMAC-SHA256(ip, internal_secret) helper §6.4.1 / §6.6
-- [x] `src/audit/worm-writer.ts` — `writeAuditToWorm` PutObject with `ObjectLockMode='COMPLIANCE'` + 7-year retention; outbox enqueue on failure; `AwsS3WormPutter` (real) + `InMemoryWormPutter` (tests) §6.4.2 / ADR-010
+- [x] `src/audit/db-writer.ts` — `writeAuditRow` INSERT (trigger computes prev_hash + row_hash); meta scrubbed; `pseudonymizeIp` HMAC-SHA256(ip, internal_secret) helper §6.4.1 / §6.6; **`writeAuditRowOnClient(client, ...)`** in-tx variant for callers that need the audit row to commit atomically with their mutation
+- [x] `src/audit/worm-writer.ts` — `writeAuditToWorm` PutObject with `ObjectLockMode='COMPLIANCE'` + 7-year retention; outbox enqueue on failure; `AwsS3WormPutter` (real) + `InMemoryWormPutter` (tests) §6.4.2 / ADR-010; tier='B' events fail-closed with 503 audit_unavailable when WORM put fails (RT-28 — outbox row still durable for retry)
+- [x] **In-tx audit emission across all public Tier B routes** (SPEC §6.4) — /revoke, /rotate-key (planned + emergency), /webhooks/:provider cascade, /callback (registration + recover + revalidate success paths), /recover-account-confirm. Each writes `event_type=&lt;route&gt;` with account_id / key_id / identity_id and meta carrying the route-specific fields, all scrubbed by defaultScrubber.
 - [x] `src/audit/scrubber.ts` — folded into `src/observability/scrubber.ts` (single scrubber serves audit + logs + metrics); applied automatically by `writeAuditRow` and `writeAuditToWorm` §6.6
 - [x] `src/jobs/audit-verifier.ts` — daily-partition hash-chain integrity check via `verifyChain`; pages onAlert with `audit_hash_chain_break` + first break id/ts §6.4.1
 - [x] `src/jobs/outbox-flusher.ts` — drains `agent_audit_outbox` with retry budget; flags rows past `max_attempts` as `audit_outbox_stuck` for SREs §6.4.2
@@ -146,7 +147,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Test summary at HEAD
 
-- **Unit tests**: 287 passing across 40 suites, ~930 ms wall (includes
+- **Unit tests**: 289 passing across 40 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
 - **Integration**: 69 passing against real Postgres 16 + Redis 7
