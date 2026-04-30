@@ -148,7 +148,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Test summary at HEAD
 
-- **Unit tests**: 323 passing across 44 suites, ~930 ms wall (includes
+- **Unit tests**: 324 passing across 44 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
 - **Integration**: 83 passing against real Postgres 16 + Redis 7
@@ -407,3 +407,16 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
      is dominated by stuck rows. Three-test unit harness
      (one fresh + N stuck) demonstrates the bug pre-fix and
      the fix post-fix.
+  19. **§10.1 registration-status add_key rejection** — SPEC
+     §10.1 declares the request body as
+     `{ "poll_token": "pak_..." | "pad_..." }` — both register
+     and add_key tokens are valid at /registration-status. Our
+     handler used `Record<endpoint, SessionKind>` so endpoint=
+     'registration' only accepted `pak_`; a legitimate
+     pad_-token poll fell through to the RT-21 mismatch branch
+     and got 410 invalid_kind. Effect: the entire add_key flow
+     (§2.5) was unreachable through /registration-status, even
+     though /begin-registration with intent='add_key' issued the
+     pad_ token correctly. Fix: kinds are now an array per
+     endpoint — registration→[register, add_key], recover→
+     [recover]. Unit regression confirms pad_ → completed.

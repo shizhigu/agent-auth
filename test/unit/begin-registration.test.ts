@@ -380,6 +380,42 @@ describe('registrationStatus (SPEC §10.1)', () => {
     ).rejects.toMatchObject({ status: 410, code: 'session_expired' });
   });
 
+  it('SPEC §10.1: /registration-status accepts pad_ (add_key) tokens, not just pak_', async () => {
+    // SPEC §10.1 lists the request body as `{ "poll_token": "pak_..." | "pad_..." }`
+    // — both register and add_key kinds use the same poll endpoint.
+    const pg = new FakePg();
+    const ct = Buffer.from('sealed_addkey');
+    pg.sessions.set('pad_' + 'x'.repeat(43), {
+      poll_token: 'pad_' + 'x'.repeat(43),
+      nonce: 'n',
+      pkce_verifier: 'v',
+      pkce_challenge: 'c',
+      audience: 'a',
+      expected_provider: 'github_app',
+      redirect_uri: 'r',
+      kind: 'add_key',
+      target_account_id: null,
+      client_pubkey: Buffer.alloc(32),
+      status: 'ready',
+      status_message: null,
+      result_ciphertext: ct,
+      account_id: 'acc-2',
+      expires_at: new Date(Date.now() + 60_000),
+      created_at: new Date(),
+    });
+    const out = await registrationStatus(
+      { poll_token: 'pad_' + 'x'.repeat(43) },
+      { postgres: pg as unknown as PostgresAdapter, endpoint: 'registration' },
+    );
+    expect(out).toEqual({
+      status: 'completed',
+      account_id: 'acc-2',
+      encrypted_payload: ct.toString('base64url'),
+      // is_first_key is false for add_key kinds.
+      is_first_key: false,
+    });
+  });
+
   it('honors injectable clock for session expiry', async () => {
     const pg = new FakePg();
     const realNow = Date.now();

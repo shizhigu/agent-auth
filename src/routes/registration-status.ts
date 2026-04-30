@@ -46,11 +46,17 @@ export interface RegistrationStatusDeps {
   readonly now?: () => number;
 }
 
-const ENDPOINT_TO_KIND: Record<RegistrationStatusEndpoint, SessionKind> = {
-  registration: 'register',
-  recover: 'recover',
-  add_key: 'add_key',
-  revalidate: 'revalidate',
+// SPEC §10.1: /registration-status accepts both `pak_` (register) and
+// `pad_` (add_key) tokens. /recover-account-status accepts only `pkr_`.
+// The 'add_key' / 'revalidate' endpoint variants are kept for SaaSes
+// that want a stricter single-kind mount for those flows; the default
+// /registration-status mount uses 'registration' and gets both kinds
+// per SPEC.
+const ENDPOINT_TO_KINDS: Record<RegistrationStatusEndpoint, ReadonlyArray<SessionKind>> = {
+  registration: ['register', 'add_key'],
+  recover: ['recover'],
+  add_key: ['add_key'],
+  revalidate: ['revalidate'],
 };
 
 const PREFIX_TO_KIND: Record<string, SessionKind> = {
@@ -75,8 +81,8 @@ export async function registrationStatus(
   const tokenKind = pollTokenKind(parsed.data.poll_token);
   if (tokenKind === null) throw new AgentAuthError(400, 'invalid_poll_token');
 
-  const expectedKind = ENDPOINT_TO_KIND[deps.endpoint];
-  if (tokenKind !== expectedKind) {
+  const expectedKinds = ENDPOINT_TO_KINDS[deps.endpoint];
+  if (!expectedKinds.includes(tokenKind)) {
     // RT-21: do not accept a recovery token at the registration endpoint.
     throw new AgentAuthError(410, 'invalid_kind');
   }
