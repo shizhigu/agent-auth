@@ -102,8 +102,12 @@ sign-off recorded in CHANGELOG).
   — post-v0.1 sweep summary covers ~30 caught bugs + 4 new
   features (agent_jobs worker, reapExpiredRows, deferred
   recovery, migrations round-trip), with RT-numbered references
-- [ ] **Migration guide** for SaaS adopters (peer dep changes,
-  config breaking changes if any)
+- [x] **Migration guide** for SaaS adopters — `docs/MIGRATION_GUIDE.md`
+  walks the post-v0.1-sweep upgrade path: apply migrations 0005 +
+  0006, optionally pass `kms` to `recoverAccountConfirm` deps,
+  schedule `processAgentJobs` + `reapExpiredRows` jobs. Documents
+  the new /callback deferral semantics, the session TTL extension,
+  what's NOT changing, testing instructions, and a rollback plan.
 - [x] **Examples updated** — `examples/express-integration.ts`,
   `examples/hono-integration.ts`, plus the new
   `examples/worker-cronjobs.ts` covering the SPEC §13.1.2
