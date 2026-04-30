@@ -25,7 +25,7 @@ sign-off recorded in CHANGELOG).
 
 ## Schema & migrations
 
-- [ ] **Forward + backward migration tested** — `0001..0004` applied on a
+- [ ] **Forward + backward migration tested** — `0001..0005` applied on a
   fresh container and on a snapshot of prod-shape data; no destructive
   changes without §3.17 two-deploy gating
 - [ ] **Migration scripts reviewed by DBA** — destructive ops (DROP,

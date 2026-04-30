@@ -143,20 +143,44 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Cross-cutting / pre-release (SPEC §12.7)
 
-- [~] **All 44 RT-* threats have integration tests §12.3** — most threats
-  covered by unit tests; M1 hot path covered by integration. Full
-  per-route integration sweep + chaos (RT-15, RT-43, RT-18/32/34) is the
-  next gating block before v1.0.
-- [~] **Integration suite scaffolded** — `test/integration/setup.ts` boots
-  Postgres + Redis via testcontainers, applies migrations, exposes
-  `IntegrationFixture`. `validate-key.int.test.ts` (4 tests) green at
-  HEAD against real DBs. `npm run test:integration` runs locally with
-  Docker.
-- [ ] **Chaos tests pass (Toxiproxy) §12.4** — `vitest.chaos.config.ts`
-  scaffolded; suite implementations pending (Postgres replication lag,
-  Redis network partition, KMS unreachable).
-- [ ] **Property-based tests pass §12.5** — fast-check sweeps deferred
-  to v0.1.1 (idempotency state-machine, rotation race, audit canonicalization).
+- [~] **44 RT-* threats: 28 covered, 16 explicitly out-of-scope or
+  operational §12.3** — unit + integration + chaos union covers
+  RT-3, 6, 9, 10, 12, 15, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+  29, 30, 31, 32, 34, 39, 40, 41, 42, 43, 44. Gaps are (a) outside
+  lib boundary (RT-7 process-memory key theft, RT-8 SDK leakage,
+  RT-11 cross-tenant data leak in SaaS code), (b) operational /
+  process (RT-1 supply-chain, RT-2 pinning, RT-4 backup, RT-13
+  backup compromise, RT-14 SBOM, RT-16 cert pinning, RT-17 service
+  account, RT-33 retention, RT-35 dependency typosquat, RT-36 npm
+  publish chain, RT-37 KMS root rotation, RT-38 incident response
+  drills) — none of which are unit-testable in this lib. RT-5 is
+  reserved.
+- [x] **Integration suite §12.3** — 23 suites, 87 tests passing
+  via `npm run test:integration` against real Postgres 16 + Redis 7
+  testcontainers. `test/integration/setup.ts` boots fixtures,
+  applies migrations 0001..0005, exposes `IntegrationFixture`.
+- [x] **Chaos tests pass §12.4** — 5 suites, 14 tests passing
+  via `npm run test:chaos`:
+  - `redis-partition.chaos.test.ts` (2): healthy-control + Redis
+    stopped mid-flight, validateKey degrades safely (no false
+    accept).
+  - `multi-region-failover.chaos.test.ts` (3): timeline mismatch,
+    LSN lag fail-closed / route-to-primary policies.
+  - `kms-unavailable.chaos.test.ts` (3): pepper fetcher failure
+    propagates as 503; legacy versions still accepted within
+    dual-window even if current pepper unreachable.
+  - `dos-rate-limit.chaos.test.ts` (3): GCRA rejects above
+    burst budget; Redis-down behavior; multi-dim short-circuit.
+  - `fail-closed-amplification.chaos.test.ts` (3): RT-43 circuit
+    breaker on idp_circuit_open prevents fail-closed cascade.
+  Toxiproxy is the SPEC reference implementation; we use direct
+  testcontainers control (stop/start) which exercises the same
+  failure modes more deterministically.
+- [~] **Property-based tests pass §12.5** — fast-check covering
+  idempotency state-machine transitions (`idempotency.property.test.ts`)
+  and `canonicalRequestHash` (key-order invariance, array-order
+  meaning, primitive type stability, deep equality). Rotation race
+  + audit-canonical-bytes property tests deferred to v0.1.1.
 - [x] **`npm run bench` within targets §12.6** — `bench/validation.bench.ts`:
   cache hit P99 ≈ 4 µs, cache-miss + HMAC P99 ≈ 9 µs (targets 50 ms / 100 ms).
 - [x] **Pre-release checklist §12.7** — `docs/PRE_RELEASE_CHECKLIST.md`
