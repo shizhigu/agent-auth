@@ -244,6 +244,32 @@ describe('validateKey (SPEC §5.3.3)', () => {
     );
   });
 
+  it('honors injectable clock for key_expired (deterministic time travel)', async () => {
+    // expires_at is 1 hour from real-now; with the injected clock running
+    // 2 hours ahead, validateKey must reject.
+    const realNow = Date.now();
+    pg.rows.get('agk_abc12345')!.expires_at = new Date(realNow + 60 * 60 * 1000);
+    const fastForwardDeps = { ...deps, now: () => realNow + 2 * 60 * 60 * 1000 };
+    await expect(validateKey(presentedKey(), fastForwardDeps)).rejects.toThrowError(
+      expect.objectContaining({ status: 401, code: 'key_expired' }),
+    );
+  });
+
+  it('honors injectable clock for rotation_grace_expired', async () => {
+    const realNow = Date.now();
+    pg.rows.get('agk_abc12345')!.rotation_state = 'rotating';
+    pg.rows.get('agk_abc12345')!.rotation_grace_expires_at = new Date(
+      realNow + 30 * 60 * 1000,
+    );
+    const fastForwardDeps = {
+      ...deps,
+      now: () => realNow + 60 * 60 * 1000,
+    };
+    await expect(validateKey(presentedKey(), fastForwardDeps)).rejects.toThrowError(
+      expect.objectContaining({ status: 401, code: 'rotation_grace_expired' }),
+    );
+  });
+
   it('rejects wrong secret with invalid_secret (constant-time hash check)', async () => {
     await expect(validateKey(presentedKey(randomBytes(32)), deps)).rejects.toThrowError(
       expect.objectContaining({ status: 401, code: 'invalid_secret' }),

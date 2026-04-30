@@ -140,7 +140,7 @@ export async function validateKey(
   // 2. Local cache.
   const localHit = deps.localCache.get(parsed.key_id);
   if (localHit && localHit.cached_epoch === currentEpoch) {
-    return validateAgainstCache(localHit, parsed.secret, deps.kms);
+    return validateAgainstCache(localHit, parsed.secret, deps.kms, now);
   }
 
   // 3. Redis cache.
@@ -154,7 +154,7 @@ export async function validateKey(
     }
     if (entry && entry.cached_epoch === currentEpoch) {
       deps.localCache.set(parsed.key_id, entry);
-      return validateAgainstCache(entry, parsed.secret, deps.kms);
+      return validateAgainstCache(entry, parsed.secret, deps.kms, now);
     }
   }
 
@@ -228,13 +228,14 @@ export async function validateKey(
   }
   deps.localCache.set(parsed.key_id, entry);
 
-  return validateAgainstCache(entry, parsed.secret, deps.kms);
+  return validateAgainstCache(entry, parsed.secret, deps.kms, now);
 }
 
 async function validateAgainstCache(
   cache: KeyCache,
   secret: string,
   kms: KmsAdapter,
+  now: () => number = Date.now,
 ): Promise<AgentContext> {
   // Account status (§5.3.3).
   if (cache.account_status === 'suspended') {
@@ -262,14 +263,14 @@ async function validateAgainstCache(
   if (cache.rotation_state === 'rotating') {
     if (
       cache.grace_expires_at &&
-      Date.now() >= new Date(cache.grace_expires_at).getTime()
+      now() >= new Date(cache.grace_expires_at).getTime()
     ) {
       throw new AgentAuthError(401, 'rotation_grace_expired');
     }
   }
 
   // Expiration (§10.4 key_expired).
-  if (cache.expires_at && Date.now() >= new Date(cache.expires_at).getTime()) {
+  if (cache.expires_at && now() >= new Date(cache.expires_at).getTime()) {
     throw new AgentAuthError(401, 'key_expired');
   }
 
