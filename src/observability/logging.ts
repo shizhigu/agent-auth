@@ -50,11 +50,15 @@ export function createLogger(cfg: LoggerConfig = {}): Logger {
   function log(level: LogLevel, msg: string, meta?: Record<string, unknown>): void {
     if (LEVEL_RANK[level] < min) return;
     const scrubbed = (meta ? (scrubber.scrub(meta) as Record<string, unknown>) : {});
+    // Spread meta FIRST so the canonical SPEC §7.2 fields (ts/level/msg)
+    // are authoritative — a SaaS that happens to log a value whose
+    // shape carries `level: 'debug'` in meta won't silently rewrite the
+    // record's severity.
     const rec: LogRecord = {
+      ...scrubbed,
       level,
       msg: scrubber.scrubLine(msg),
       ts: now().toISOString(),
-      ...scrubbed,
     };
     emit(rec);
   }

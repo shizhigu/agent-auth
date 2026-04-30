@@ -165,7 +165,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Test summary at HEAD
 
-- **Unit tests**: 327 passing across 44 suites, ~930 ms wall (includes
+- **Unit tests**: 328 passing across 44 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
 - **Integration**: 87 passing against real Postgres 16 + Redis 7
@@ -493,3 +493,14 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
      allows pending → failed. Unit regression seeds a stale
      pending row + not_found resource state and asserts it
      transitions to failed; pre-fix the row stayed pending.
+  24. **§7.2 logger meta keys can override canonical fields** —
+     `createLogger().log` built records as
+     `{ level, msg, ts, ...scrubbed }` so meta keys with the
+     SPEC §7.2 reserved names (`ts`, `level`, `msg`) silently
+     rewrote those fields. Effect: a SaaS logging an event whose
+     scrubbed meta happened to include `level: 'debug'` would
+     emit the record at the wrong severity, breaking log
+     analytics and alerting. Fix flips the spread order so meta
+     comes first, canonical fields last; a unit regression seeds
+     a meta with `level/ts/msg` overrides and asserts the
+     canonical fields win.

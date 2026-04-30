@@ -27,6 +27,29 @@ describe('Logger (SPEC §7.2 + §6.6)', () => {
     expect(r.user.name).toBe('octocat');
   });
 
+  it('meta keys never override the canonical top-level fields (SPEC §7.2)', () => {
+    // SPEC §7.2 mandates `ts`, `level`, `msg` as canonical fields. A
+    // SaaS that accidentally includes the same key in `meta` (e.g.
+    // logging an event whose payload happens to have `level` in it)
+    // must not silently rewrite the record's level — that would make
+    // log analytics report the wrong severity.
+    const { logger, records } = makeArrayLogger();
+    logger.warn('hello', {
+      level: 'debug',         // attacker / accident
+      ts: 'fake-ts',          // attacker / accident
+      msg: 'overridden',      // attacker / accident
+      foo: 'bar',
+    });
+    expect(records).toHaveLength(1);
+    expect(records[0]!.level).toBe('warn');
+    expect(records[0]!.msg).toBe('hello');
+    // Canonical ts is an ISO date string, not the user-supplied 'fake-ts'.
+    expect(records[0]!.ts).not.toBe('fake-ts');
+    expect(records[0]!.ts).toMatch(/T/);
+    // Other meta keys still flow through.
+    expect(records[0]!.foo).toBe('bar');
+  });
+
   it('respects minLevel', () => {
     const records: unknown[] = [];
     const logger = createLogger({
