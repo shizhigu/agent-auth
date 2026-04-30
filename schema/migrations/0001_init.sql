@@ -357,7 +357,7 @@ GRANT SELECT, INSERT, UPDATE ON
   agent_registration_sessions, agent_device_flows
   TO agent_auth_app;
 
-GRANT INSERT, UPDATE, DELETE ON
+GRANT SELECT, INSERT, UPDATE, DELETE ON
   agent_jobs, agent_accounts, agent_identities, agent_api_keys,
   agent_registration_sessions, agent_device_flows
   TO agent_auth_admin;

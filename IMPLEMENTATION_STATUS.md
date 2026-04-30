@@ -145,8 +145,8 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 - **Unit tests**: 262 passing across 35 suites, ~880 ms wall (includes
   fast-check property tests on idempotency state machine + canonicalRequestHash).
-- **Integration**: 31 passing against real Postgres 16 + Redis 7
-  (testcontainers, ~27 s):
+- **Integration**: 32 passing against real Postgres 16 + Redis 7
+  (testcontainers, ~35 s):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
     fallback, invalid_secret rejection.
   - revoke.int (2): Tier B revoke writes log + bumps epoch + invalidates
@@ -177,6 +177,10 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
     UPDATE (errcode 23514); bumpEpochInTx increments Postgres + pushes
     to Redis; barrier same-timeline LSN regression refused; barrier
     timeline regression refused; barrier reset on new timeline allowed.
+  - tombstone-reapply.int (1): RT-23/RT-40 — post-snapshot revocations
+    captured in agent_revocation_log are reapplied to a "restored"
+    cluster; reverted key flips back to revoked; second pass is a no-op
+    (idempotent reapply); untouched keys stay active.
 - **Chaos**: 14 passing (~10 s):
   - redis-partition (2): RT-25 healthy + partitioned-Redis no-false-accept
     invariant via testcontainers stop().
