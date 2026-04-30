@@ -1,0 +1,122 @@
+/**
+ * POST /api/agent-auth/registration-status (and the recover-account-status
+ * variant). SPEC §10.1.
+ *
+ * The poll_token PK has a kind-binding CHECK constraint server-side
+ * (§3.6 poll_token_prefix_matches_kind). The handler additionally
+ * validates the kind matches the endpoint variant (RT-21 session-fixation
+ * defense): a `pkr_*` token cannot be polled at /registration-status.
+ */
+
+import { z } from 'zod';
+import { AgentAuthError } from '../errors.js';
+import type { PostgresAdapter } from '../storage/postgres-adapter.js';
+import { RegistrationSessionRepo } from '../storage/registration-session-repo.js';
+import type { SessionKind } from '../types.js';
+
+export type RegistrationStatusEndpoint = 'registration' | 'recover' | 'add_key' | 'revalidate';
+
+const STATUS_BODY = z.object({ poll_token: z.string().min(1) }).strict();
+
+export type RegistrationStatusResponse =
+  | { readonly status: 'pending' }
+  | {
+      readonly status: 'completed';
+      readonly account_id: string;
+      readonly encrypted_payload: string;
+      readonly is_first_key: boolean;
+    }
+  | {
+      readonly status: 'failed';
+      readonly code: string;
+      readonly message: string;
+    };
+
+export interface RegistrationStatusDeps {
+  readonly postgres: PostgresAdapter;
+  /** The endpoint variant — different routes accept different kinds. */
+  readonly endpoint: RegistrationStatusEndpoint;
+}
+
+const ENDPOINT_TO_KIND: Record<RegistrationStatusEndpoint, SessionKind> = {
+  registration: 'register',
+  recover: 'recover',
+  add_key: 'add_key',
+  revalidate: 'revalidate',
+};
+
+const PREFIX_TO_KIND: Record<string, SessionKind> = {
+  pak_: 'register',
+  pkr_: 'recover',
+  pad_: 'add_key',
+  pav_: 'revalidate',
+};
+
+function pollTokenKind(token: string): SessionKind | null {
+  const prefix = token.slice(0, 4);
+  return PREFIX_TO_KIND[prefix] ?? null;
+}
+
+export async function registrationStatus(
+  rawBody: unknown,
+  deps: RegistrationStatusDeps,
+): Promise<RegistrationStatusResponse> {
+  const parsed = STATUS_BODY.safeParse(rawBody);
+  if (!parsed.success) throw new AgentAuthError(400, 'invalid_poll_token');
+
+  const tokenKind = pollTokenKind(parsed.data.poll_token);
+  if (tokenKind === null) throw new AgentAuthError(400, 'invalid_poll_token');
+
+  const expectedKind = ENDPOINT_TO_KIND[deps.endpoint];
+  if (tokenKind !== expectedKind) {
+    // RT-21: do not accept a recovery token at the registration endpoint.
+    throw new AgentAuthError(410, 'invalid_kind');
+  }
+
+  const repo = new RegistrationSessionRepo(deps.postgres);
+  const row = await repo.getByPollToken(parsed.data.poll_token);
+  if (!row) throw new AgentAuthError(410, 'session_expired');
+  if (row.expires_at.getTime() < Date.now() && row.status !== 'ready') {
+    throw new AgentAuthError(410, 'session_expired');
+  }
+
+  if (row.status === 'pending' || row.status === 'exchanging') {
+    return { status: 'pending' };
+  }
+
+  if (row.status === 'failed') {
+    return {
+      status: 'failed',
+      code: row.status_message ?? 'failed',
+      message: row.status_message ?? 'registration failed',
+    };
+  }
+
+  if (row.status === 'expired') {
+    throw new AgentAuthError(410, 'session_expired');
+  }
+
+  // status === 'ready' — payload is in result_ciphertext.
+  if (!row.result_ciphertext) {
+    throw new AgentAuthError(500, 'internal_error');
+  }
+  if (!row.account_id) {
+    throw new AgentAuthError(500, 'internal_error');
+  }
+  return {
+    status: 'completed',
+    account_id: row.account_id,
+    encrypted_payload: row.result_ciphertext.toString('base64url'),
+    is_first_key: deriveIsFirstKey(row.kind),
+  };
+}
+
+/**
+ * is_first_key is logically a property of the issuance event. It's
+ * encoded redundantly in the sealed payload (§2.6) and surfaced here
+ * for SaaS UX. v0.1: true only for kind='register'; others (recover /
+ * add_key / revalidate) are false.
+ */
+function deriveIsFirstKey(kind: SessionKind): boolean {
+  return kind === 'register';
+}
