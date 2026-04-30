@@ -104,8 +104,14 @@ sign-off recorded in CHANGELOG).
   recovery, migrations round-trip), with RT-numbered references
 - [ ] **Migration guide** for SaaS adopters (peer dep changes,
   config breaking changes if any)
-- [ ] **Examples updated** — `examples/express-integration.ts`,
-  `examples/hono-integration.ts`
+- [x] **Examples updated** — `examples/express-integration.ts`,
+  `examples/hono-integration.ts`, plus the new
+  `examples/worker-cronjobs.ts` covering the SPEC §13.1.2
+  background-worker cadence (reapers, hash-chain verifier,
+  partition manager, rotation-grace expirer, webhook replay,
+  idempotency reconciler, processAgentJobs worker, expired-rows
+  reaper, Redis SET reconciliation). All three pass strict-mode
+  typecheck.
 
 ## Release approval
 
