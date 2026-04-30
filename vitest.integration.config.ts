@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    include: ['test/integration/**/*.test.ts'],
+    include: ['test/integration/**/*.int.test.ts'],
     environment: 'node',
     globals: false,
     pool: 'forks',
