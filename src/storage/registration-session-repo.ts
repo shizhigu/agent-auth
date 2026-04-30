@@ -76,15 +76,6 @@ export class RegistrationSessionRepo {
     );
   }
 
-  async getByNonceForUpdate(nonce: string): Promise<RegistrationSessionRow | null> {
-    return this.pg.queryOne<RegistrationSessionRow>(
-      `SELECT * FROM agent_registration_sessions
-        WHERE nonce = $1 AND status = 'pending' AND expires_at > now()
-        FOR UPDATE`,
-      [nonce],
-    );
-  }
-
   async transitionStatus(
     poll_token: string,
     from: SessionStatus,
