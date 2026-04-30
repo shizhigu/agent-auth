@@ -20,6 +20,7 @@
 
 import { createHash } from 'node:crypto';
 import { AgentAuthError, ServiceUnavailableError } from '../errors.js';
+import type { AgentAuthErrorCode } from '../errors.js';
 import type { PostgresAdapter } from '../storage/postgres-adapter.js';
 import { TierBTimeoutError, tierBCommit } from '../distributed/tier-b-commit.js';
 import type { PoolClient } from 'pg';
@@ -167,13 +168,23 @@ export async function tierBIdempotent<T>(
           status: reserved.outcome_status ?? 200,
           body: reserved.outcome_body as T,
         };
-      case 'failed':
+      case 'failed': {
+        // SPEC §5.1.3: "Retries return same response." Reconstruct the
+        // original AgentAuthError from the stored body so the replay's
+        // wire shape matches the first call's wire shape (same code,
+        // same message, same details), with `replay: true` merged in.
+        const stored = (reserved.outcome_body ?? {}) as {
+          code?: string;
+          message?: string;
+          details?: Record<string, unknown>;
+        };
         throw new AgentAuthError(
           reserved.outcome_status ?? 500,
-          'invalid_request',
-          undefined,
-          { details: { replay: true, body: reserved.outcome_body } },
+          (stored.code ?? 'invalid_request') as AgentAuthErrorCode,
+          stored.message,
+          { details: { ...(stored.details ?? {}), replay: true } },
         );
+      }
       case 'pending':
         throw new AgentAuthError(425, 'idempotency_in_flight', undefined, {
           headers: { 'Retry-After': '1' },

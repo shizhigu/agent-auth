@@ -316,7 +316,14 @@ describe('tierBIdempotent (SPEC §5.1.1)', () => {
         opCalls++;
         return { status: 200, body: {} };
       }),
-    ).rejects.toMatchObject({ status: 409 });
+    ).rejects.toMatchObject({
+      status: 409,
+      // SPEC §5.1.3 — replay must return the same response as the first
+      // call. The wire-shape `code` must reflect the original error
+      // (`already_revoked`), not a generic `invalid_request`.
+      code: 'already_revoked',
+      details: { replay: true },
+    });
     expect(opCalls).toBe(1); // operation NOT re-run on the second call
   });
 
