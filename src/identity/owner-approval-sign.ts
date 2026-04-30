@@ -88,6 +88,20 @@ export async function emitOwnerApprovalRequest(
     ],
   );
 
+  // SPEC §2.5 says sessions TTL is 5 minutes; SPEC §2.9 step 5 says
+  // "Wait for approval (default 24h)". When owner_approval is configured
+  // the session must live at least as long as the approval window —
+  // otherwise the reaper deletes the session before the owner can
+  // approve, and /recover-account-confirm's finalize path fails to
+  // find the session row. Extend session.expires_at to match the
+  // approval row's TTL (only on the upward direction; never shorten).
+  await pg.query(
+    `UPDATE agent_registration_sessions
+        SET expires_at = GREATEST(expires_at, $2::timestamptz)
+      WHERE poll_token = $1`,
+    [req.poll_token, expires_at],
+  );
+
   const approval_callback_url = `${cfg.approval_callback_url_base}/${approval_url_token}`;
   const body = {
     request_id,

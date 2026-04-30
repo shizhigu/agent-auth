@@ -172,7 +172,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Test summary at HEAD
 
-- **Unit tests**: 341 passing across 46 suites, ~930 ms wall (includes
+- **Unit tests**: 342 passing across 46 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
 - **Integration**: 92 passing against real Postgres 16 + Redis 7

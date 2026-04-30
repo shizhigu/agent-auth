@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { createHmac, createHash } from 'node:crypto';
-import { verifyInboundOwnerApproval } from '../../src/identity/owner-approval-sign.js';
+import {
+  verifyInboundOwnerApproval,
+  emitOwnerApprovalRequest,
+} from '../../src/identity/owner-approval-sign.js';
+import type { PostgresAdapter } from '../../src/storage/postgres-adapter.js';
 
 const SECRET = Buffer.alloc(32, 7);
 
@@ -108,5 +112,50 @@ describe('verifyInboundOwnerApproval (SPEC §2.9 / RT-19)', () => {
         raw_body: '{}',
       }),
     ).toThrowError(/missing signature headers/);
+  });
+});
+
+describe('emitOwnerApprovalRequest — SPEC §2.5 + §2.9 session TTL extension', () => {
+  it('extends agent_registration_sessions.expires_at to match approval window', async () => {
+    // Without this, a 5-min session is reaped within 1h (per §2.5
+    // reaper grace) — well before the 24h approval window —
+    // and the deferred-recovery flow loses its session row.
+    const queries: Array<{ text: string; params?: ReadonlyArray<unknown> }> = [];
+    const fakePg = {
+      async query(text: string, params?: ReadonlyArray<unknown>) {
+        queries.push({ text, ...(params !== undefined ? { params } : {}) });
+        return { rows: [], rowCount: 0 };
+      },
+    } as unknown as PostgresAdapter;
+    const fakeFetcher: typeof fetch = async () =>
+      new Response('', { status: 200 });
+
+    const now_ms = Date.UTC(2027, 0, 1, 12, 0, 0); // fixed instant
+    await emitOwnerApprovalRequest(
+      fakePg,
+      {
+        approval_webhook_url: 'https://saas.test/owner-approve',
+        internal_secret: SECRET,
+        approval_callback_url_base: 'https://saas.test/api/agent-auth/recover-account-confirm',
+        request_ttl_seconds: 24 * 3600,
+        fetcher: fakeFetcher,
+        now: () => now_ms,
+      },
+      {
+        account_id: '00000000-0000-0000-0000-000000000001',
+        poll_token: 'pkr_' + 'x'.repeat(43),
+      },
+    );
+
+    // First query: INSERT into agent_recovery_approvals.
+    expect(queries[0]?.text).toMatch(/INSERT INTO agent_recovery_approvals/);
+    // Second query: UPDATE the session expires_at to GREATEST(...).
+    expect(queries[1]?.text).toMatch(/UPDATE agent_registration_sessions/);
+    expect(queries[1]?.text).toMatch(/SET expires_at = GREATEST/);
+    // Params: poll_token + the new expires_at (24h from now_ms).
+    expect(queries[1]?.params?.[0]).toBe('pkr_' + 'x'.repeat(43));
+    const newExpiry = queries[1]?.params?.[1] as Date;
+    expect(newExpiry).toBeInstanceOf(Date);
+    expect(newExpiry.getTime()).toBe(now_ms + 24 * 3600 * 1000);
   });
 });
