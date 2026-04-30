@@ -52,6 +52,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - [x] `src/routes/rotate-key.ts` — planned (Tier A, grace seconds → rotating + grace_expires_at) and emergency (Tier B inside `tierBIdempotent`, grace=0 → revoked); calls `issueNewKey` for the successor; `bumpEpochInTx` (rotating is auth-relevant); optional sealed-box delivery via `client_pubkey_b64` §2.7
 - [x] `src/routes/revoke.ts` — Tier B inside `tierBIdempotent`; bumps epoch + appends revocation_log + updates per-key `last_revoke_lsn`; post-commit barrier capture + `invalidateKey`; scope check (`self:revoke` for own key, `admin:keys` for others on same account); 404 anti-enumeration §2.8
 - [x] `src/routes/list-keys.ts` — GET /api/agent-auth/keys (§10.1) — admin:keys-scoped projection of caller's account keys; revoked rows excluded; cross-account guard; integration + unit covered
+- [x] `src/routes/healthz.ts` — GET /api/agent-auth/healthz (§10.2) — reads authoritative barrier (timeline_id + last_lsn) + redis epoch; surfaces circuit-breaker states; 200 healthy / 503 unhealthy with `reasons[]` (postgres_unreachable, redis_unreachable, circuit_breaker_open:&lt;name&gt;)
 - [x] `src/distributed/revocation-epoch.ts` — `bumpEpochInTx(client, redis)` advances Postgres singleton + pushes via Redis Lua MAX §5.3.2
 - [x] `src/distributed/revocation-barrier.ts` — `captureBarrierAfterCommit` reads `pg_current_wal_insert_lsn()` + advances barrier; `readAuthoritativeBarrier` for secondary regions §4.4.2
 - [x] `src/distributed/tier-b-commit.ts` — `tierBCommit` race + Postgres XX098 detection; `tierBTransaction` sets `synchronous_commit='remote_apply'` §4.3
@@ -144,11 +145,11 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Test summary at HEAD
 
-- **Unit tests**: 277 passing across 38 suites, ~930 ms wall (includes
+- **Unit tests**: 282 passing across 39 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
-- **Integration**: 67 passing against real Postgres 16 + Redis 7
-  (testcontainers, ~63 s):
+- **Integration**: 69 passing against real Postgres 16 + Redis 7
+  (testcontainers, ~83 s — healthz unhealthy-path waits ioredis retries):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
     fallback, invalid_secret rejection.
   - revoke.int (2): Tier B revoke writes log + bumps epoch + invalidates
@@ -211,6 +212,9 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
     rotating keys with §10.1 projection (revoked excluded); cross-
     account guard (caller from acct-A never sees acct-B keys);
     403 insufficient_scope when caller lacks admin:keys.
+  - healthz.int (2): GET /healthz §10.2 — 200 healthy with timeline_id
+    + barrier_lsn from the live singleton; 503 unhealthy with reasons
+    including 'redis_unreachable' after testcontainers stop().
   - recover-account.int (1): full §2.9 / §2.2.2 case-C flow against
     real DB. Webhook-revoked identity is re-activated, new key issued
     bound to the same account_id, sealed payload decrypts to a
