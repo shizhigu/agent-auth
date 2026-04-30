@@ -49,6 +49,8 @@ export interface OwnerApprovalConfig {
   readonly request_ttl_seconds?: number;
   /** Injectable HTTP fetch. Defaults to global fetch. */
   readonly fetcher?: Fetcher;
+  /** Injectable clock (ms) for tests. Defaults to Date.now. */
+  readonly now?: () => number;
 }
 
 export interface OwnerApprovalRequestEnvelope {
@@ -62,12 +64,13 @@ export async function emitOwnerApprovalRequest(
   req: OwnerApprovalRequestEnvelope,
 ): Promise<void> {
   const fetcher = cfg.fetcher ?? fetch;
+  const now_ms = (cfg.now ?? Date.now)();
   const ttl = (cfg.request_ttl_seconds ?? 24 * 3600) * 1000;
   const request_id = randomUuidish();
   const approval_url_token = randomBytes(32).toString('base64url');
   const webhook_nonce = randomBytes(32);
-  const expires_at = new Date(Date.now() + ttl);
-  const sent_at = new Date();
+  const expires_at = new Date(now_ms + ttl);
+  const sent_at = new Date(now_ms);
 
   await pg.query(
     `INSERT INTO agent_recovery_approvals
@@ -100,6 +103,7 @@ export async function emitOwnerApprovalRequest(
     body_str,
     request_id,
     webhook_nonce.toString('base64url'),
+    now_ms,
   );
 
   // Best-effort send — the caller can re-poll status; failure does not
@@ -132,8 +136,9 @@ function signOutbound(
   body: string,
   request_id: string,
   nonce: string,
+  now_ms: number = Date.now(),
 ): SignedHeaders {
-  const timestamp = String(Math.floor(Date.now() / 1000));
+  const timestamp = String(Math.floor(now_ms / 1000));
   const body_hash = createHash('sha256').update(body).digest('hex');
   const canonical = [method, path, timestamp, nonce, request_id, body_hash].join('\n');
   const sig = createHmac('sha256', secret).update(canonical).digest('hex');

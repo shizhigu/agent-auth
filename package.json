@@ -22,6 +22,14 @@
     "./hono": {
       "types": "./dist/middleware/hono-adapter.d.ts",
       "import": "./dist/middleware/hono-adapter.js"
+    },
+    "./*.js": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js"
     }
   },
   "files": [
