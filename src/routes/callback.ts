@@ -35,6 +35,7 @@ import type { PostgresAdapter } from '../storage/postgres-adapter.js';
 import type { KmsAdapter } from '../storage/kms-adapter.js';
 import { seal } from '../crypto/sealed-box.js';
 import { buildSealedPayload, issueNewKey } from '../identity/issue-key.js';
+import { writeAuditRowOnClient } from '../audit/db-writer.js';
 import type {
   AssuranceLevel,
   Attestation,
@@ -341,6 +342,23 @@ export async function callback(
         WHERE poll_token = $1`,
       [session.poll_token, account_id, ciphertext],
     );
+
+    // SPEC §6.4 — emit audit row in the SAME txn as the account / identity /
+    // key creation. event_type tracks the SessionKind for forensics
+    // (registration vs recovery vs revalidate produce distinct audit rows).
+    await writeAuditRowOnClient(client, {
+      event_type: `${session.kind}_callback_success`,
+      endpoint: '/api/agent-auth/callback/:provider',
+      status_class: 2,
+      account_id,
+      key_id: issued.key_id,
+      identity_id,
+      meta: {
+        provider: provider.name,
+        is_first_key: isFirstKey,
+        session_kind: session.kind,
+      },
+    });
 
     return {
       status: 'success' as const,

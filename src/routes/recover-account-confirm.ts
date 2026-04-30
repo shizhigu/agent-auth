@@ -19,6 +19,7 @@
 import { z } from 'zod';
 import { AgentAuthError } from '../errors.js';
 import { verifyInboundOwnerApproval } from '../identity/owner-approval-sign.js';
+import { writeAuditRowOnClient } from '../audit/db-writer.js';
 import type { PostgresAdapter } from '../storage/postgres-adapter.js';
 import type { RedisAdapter } from '../storage/redis-adapter.js';
 
@@ -107,45 +108,62 @@ export async function recoverAccountConfirm(
     throw new AgentAuthError(400, 'invalid_request', 'invalid body');
   }
 
-  const row = await deps.postgres.queryOne<ApprovalRow>(
-    `SELECT request_id::text AS request_id, account_id::text AS account_id,
-            poll_token, approval_url_token, decision, decision_at, expires_at
-       FROM agent_recovery_approvals
-      WHERE approval_url_token = $1
-      FOR UPDATE`,
-    [input.approval_url_token],
-  );
-  if (!row) {
-    throw new AgentAuthError(404, 'invalid_request', 'approval not found');
-  }
-  const now = (deps.now ?? Date.now)();
-  if (row.expires_at.getTime() < now) {
-    throw new AgentAuthError(410, 'session_expired', 'approval expired');
-  }
-  if (row.decision === 'approved' || row.decision === 'denied') {
-    // Idempotent: return the existing decision.
+  // Wrap the SELECT FOR UPDATE + UPDATE + audit-row write in one txn so
+  // (a) the row lock actually holds across the read-modify-write and
+  // (b) the audit row commits atomically with the decision (SPEC §6.4).
+  return deps.postgres.transaction(async (client) => {
+    const sel = await client.query<ApprovalRow>(
+      `SELECT request_id::text AS request_id, account_id::text AS account_id,
+              poll_token, approval_url_token, decision, decision_at, expires_at
+         FROM agent_recovery_approvals
+        WHERE approval_url_token = $1
+        FOR UPDATE`,
+      [input.approval_url_token],
+    );
+    const row = sel.rows[0];
+    if (!row) {
+      throw new AgentAuthError(404, 'invalid_request', 'approval not found');
+    }
+    const now = (deps.now ?? Date.now)();
+    if (row.expires_at.getTime() < now) {
+      throw new AgentAuthError(410, 'session_expired', 'approval expired');
+    }
+    if (row.decision === 'approved' || row.decision === 'denied') {
+      // Idempotent: return the existing decision (no audit row — already
+      // emitted at first decision).
+      return {
+        request_id: row.request_id,
+        account_id: row.account_id,
+        decision: row.decision,
+        decision_at: (row.decision_at ?? new Date()).toISOString(),
+      };
+    }
+    const upd = await client.query<{ decision_at: Date }>(
+      `UPDATE agent_recovery_approvals
+          SET decision = $2,
+              decision_at = now(),
+              decision_reason = $3
+        WHERE approval_url_token = $1 AND (decision IS NULL OR decision = 'pending')
+        RETURNING decision_at`,
+      [input.approval_url_token, body.decision, body.reason ?? null],
+    );
+    const decision_at = upd.rows[0]?.decision_at ?? new Date();
+    await writeAuditRowOnClient(client, {
+      event_type: 'recover_account_owner_decision',
+      endpoint: '/api/agent-auth/recover-account-confirm',
+      status_class: 2,
+      account_id: row.account_id,
+      meta: {
+        request_id: row.request_id,
+        decision: body.decision,
+        reason: body.reason ?? null,
+      },
+    });
     return {
       request_id: row.request_id,
       account_id: row.account_id,
-      decision: row.decision,
-      decision_at: (row.decision_at ?? new Date()).toISOString(),
+      decision: body.decision,
+      decision_at: decision_at.toISOString(),
     };
-  }
-
-  // 4. Persist decision.
-  const upd = await deps.postgres.queryOne<{ decision_at: Date }>(
-    `UPDATE agent_recovery_approvals
-        SET decision = $2,
-            decision_at = now(),
-            decision_reason = $3
-      WHERE approval_url_token = $1 AND (decision IS NULL OR decision = 'pending')
-      RETURNING decision_at`,
-    [input.approval_url_token, body.decision, body.reason ?? null],
-  );
-  return {
-    request_id: row.request_id,
-    account_id: row.account_id,
-    decision: body.decision,
-    decision_at: (upd?.decision_at ?? new Date()).toISOString(),
-  };
+  });
 }

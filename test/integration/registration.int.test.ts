@@ -123,6 +123,18 @@ describe('integration: full registration flow (SPEC §2.2.2 + §2.6)', () => {
     expect(cb.is_first_key).toBe(true);
     expect(provider.exchangeCalled).toBe(1);
 
+    // SPEC §6.4 — callback success emits an audit row in-tx.
+    if (cb.status === 'success') {
+      const audit = await fix.postgres.queryOne<{ event_type: string }>(
+        `SELECT event_type FROM agent_audit_log
+          WHERE event_type = 'register_callback_success'
+            AND account_id = $1::uuid
+          ORDER BY id DESC LIMIT 1`,
+        [cb.account_id],
+      );
+      expect(audit?.event_type).toBe('register_callback_success');
+    }
+
     // Step 3: poll registration-status, decrypt the sealed payload.
     const status = await registrationStatus(
       { poll_token: begin.poll_token },

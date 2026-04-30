@@ -127,6 +127,16 @@ describe('integration: /recover-account-confirm (SPEC §2.9 / RT-19)', () => {
     );
     expect(row?.decision).toBe('approved');
     expect(row?.decision_at).not.toBeNull();
+
+    // SPEC §6.4 — owner-decision audit row written in-tx.
+    const audit = await fix.postgres.queryOne<{ event_type: string }>(
+      `SELECT event_type FROM agent_audit_log
+        WHERE event_type = 'recover_account_owner_decision'
+          AND account_id = $1::uuid
+        ORDER BY id DESC LIMIT 1`,
+      [planted.account_id],
+    );
+    expect(audit?.event_type).toBe('recover_account_owner_decision');
   });
 
   it('replay with same nonce is rejected (RT-19 single-use guard via Redis SET NX)', async () => {

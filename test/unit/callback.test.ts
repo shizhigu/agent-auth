@@ -199,6 +199,20 @@ function makeAdapter(db: FakeDb): PostgresAdapter {
         db.keys.set(id, row);
         return { rows: [{ id, created_at }], rowCount: 1 };
       }
+      // audit_log insert (writeAuditRowOnClient) — return synthetic row.
+      if (/INSERT INTO agent_audit_log/.test(text)) {
+        return {
+          rows: [
+            {
+              id: '1',
+              ts: new Date(),
+              row_hash: Buffer.alloc(32),
+              prev_hash: Buffer.alloc(32),
+            },
+          ],
+          rowCount: 1,
+        };
+      }
       return { rows: [], rowCount: 0 };
     },
     release() {
