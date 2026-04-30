@@ -141,11 +141,19 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
   written; deferred items called out explicitly.
 - [x] **Threat-mitigation matrix** — RT mapping in PRE_RELEASE_CHECKLIST.
 
-## Test summary at HEAD (b284f01 + post-M8)
+## Test summary at HEAD
 
-- **Unit tests**: 255 passing across 34 suites, ~800 ms wall.
-- **Integration**: 4 passing against real Postgres 16 + Redis 7
-  (testcontainers, ~11 s).
+- **Unit tests**: 262 passing across 35 suites, ~880 ms wall (includes
+  fast-check property tests on idempotency state machine + canonicalRequestHash).
+- **Integration**: 10 passing against real Postgres 16 + Redis 7
+  (testcontainers, ~11 s):
+  - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
+    fallback, invalid_secret rejection.
+  - revoke.int (2): Tier B revoke writes log + bumps epoch + invalidates
+    cache; idempotent replay no-ops.
+  - webhook.int (4): cascade revoke (active + rotating keys + account
+    suspension); RT-6 replay returns 'duplicate'; RT-30 collision raises
+    onAlert; bad HMAC writes nothing to agent_webhook_events.
 - **Bench**: validation_cache_hit P50/P99 = 2.5 µs / 4.3 µs;
   validation_cache_miss_with_hmac P50/P99 = 5.0 µs / 8.9 µs.
 - **Typecheck**: clean (`tsc --noEmit`).
