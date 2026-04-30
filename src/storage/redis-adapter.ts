@@ -40,6 +40,61 @@ end
 return current
 `;
 
+/**
+ * GCRA atomic rate-limit script. SPEC §5.2.1.
+ *   KEYS[1] = bucket key
+ *   ARGV[1] = period_seconds
+ *   ARGV[2] = burst_capacity (max units in window)
+ *   ARGV[3] = cost_units (default 1)
+ *   ARGV[4] = now_ms (caller-supplied for testability; if 0 use redis TIME)
+ * Returns: { allowed: 0|1, remaining_units: int, time_ms: int }
+ *   On accept: time_ms = reset_after_ms (when budget fully replenishes)
+ *   On reject: time_ms = retry_after_ms (when this exact cost would be allowed)
+ */
+export const LUA_GCRA = `
+local key = KEYS[1]
+local period = tonumber(ARGV[1])
+local burst = tonumber(ARGV[2])
+local cost = tonumber(ARGV[3] or 1)
+local now_ms_in = tonumber(ARGV[4] or 0)
+
+if not period or not burst or not cost then
+  return redis.error_reply('GCRA: missing/invalid params')
+end
+if period <= 0 or burst <= 0 or cost < 1 or cost > burst then
+  return redis.error_reply('GCRA: out-of-range params')
+end
+
+local rate = burst / period
+local interval = cost / rate
+
+local now
+if now_ms_in > 0 then
+  now = now_ms_in / 1000.0
+else
+  local time = redis.call('TIME')
+  now = tonumber(time[1]) + tonumber(time[2]) / 1e6
+end
+
+local last = redis.call('GET', key)
+local tat = (last and tonumber(last)) or now
+
+local allow_at = math.max(tat, now)
+local new_tat = allow_at + interval
+
+if (new_tat - now) > (burst / rate) then
+  local retry_after = math.max(0, new_tat - now - (burst / rate))
+  return { 0, 0, math.ceil(retry_after * 1000) }
+end
+
+local ttl = math.ceil((new_tat - now) + period)
+redis.call('SET', key, tostring(new_tat), 'EX', ttl)
+
+local remaining_capacity = (burst / rate) - (new_tat - now)
+local remaining_units = math.max(0, math.floor(remaining_capacity * rate))
+return { 1, remaining_units, math.ceil((new_tat - now) * 1000) }
+`;
+
 export interface RedisAdapter {
   /** GET <key> — returns null on miss. */
   get(key: string): Promise<string | null>;
@@ -93,11 +148,16 @@ export class IoredisAdapter implements RedisAdapter {
 
   /** Load Lua scripts and cache their SHAs. Call before serving traffic. */
   async loadScripts(): Promise<void> {
-    const sha = await this.cfg.client.script('LOAD', LUA_EPOCH_MAX);
-    if (typeof sha !== 'string') {
-      throw new Error('redis_script_load_returned_non_string');
+    for (const [name, src] of Object.entries({
+      epoch_max: LUA_EPOCH_MAX,
+      gcra: LUA_GCRA,
+    })) {
+      const sha = await this.cfg.client.script('LOAD', src);
+      if (typeof sha !== 'string') {
+        throw new Error(`redis_script_load_returned_non_string: ${name}`);
+      }
+      this.scriptShas.set(name, sha);
     }
-    this.scriptShas.set('epoch_max', sha);
   }
 
   async get(key: string): Promise<string | null> {
@@ -312,6 +372,37 @@ export class InMemoryRedisAdapter implements RedisAdapter {
       const next = proposed > cur ? proposed : cur;
       this.kv.set(k, { value: String(next) });
       return next;
+    }
+    if (scriptName === 'gcra') {
+      const k = keys[0];
+      const period = Number(args[0]);
+      const burst = Number(args[1]);
+      const cost = Number(args[2] ?? '1');
+      const nowMsIn = Number(args[3] ?? '0');
+      if (!k) throw new Error('gcra_missing_key');
+      if (!Number.isFinite(period) || period <= 0)
+        throw new Error('gcra_invalid_period');
+      if (!Number.isFinite(burst) || burst <= 0)
+        throw new Error('gcra_invalid_burst');
+      if (!Number.isFinite(cost) || cost < 1 || cost > burst)
+        throw new Error('gcra_invalid_cost');
+      const rate = burst / period;
+      const interval = cost / rate;
+      const now = (nowMsIn > 0 ? nowMsIn : this.now()) / 1000;
+      const last = this.check(k)?.value;
+      const tat = last !== undefined ? Number(last) : now;
+      const allow_at = Math.max(tat, now);
+      const new_tat = allow_at + interval;
+      if (new_tat - now > burst / rate) {
+        const retryAfter = Math.max(0, new_tat - now - burst / rate);
+        // Return a tuple — using JSON to serialize across the adapter boundary.
+        return JSON.stringify([0, 0, Math.ceil(retryAfter * 1000)]);
+      }
+      const ttl = Math.ceil(new_tat - now + period);
+      this.kv.set(k, { value: String(new_tat), expires_at: this.now() + ttl * 1000 });
+      const remainingCapacity = burst / rate - (new_tat - now);
+      const remainingUnits = Math.max(0, Math.floor(remainingCapacity * rate));
+      return JSON.stringify([1, remainingUnits, Math.ceil((new_tat - now) * 1000)]);
     }
     throw new Error(`unknown_script: ${scriptName}`);
   }

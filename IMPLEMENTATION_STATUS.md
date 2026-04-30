@@ -72,14 +72,15 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Milestone M5 — Rate limiting + observability (SPEC §11.2 M5)
 
-- [ ] `src/reliability/gcra.ts` + Lua script §5.2.1
-- [ ] `src/middleware/rate-limit.ts` — multi-dimensional limits §5.2.2
-- [ ] `src/observability/metrics.ts` — Prometheus exposition §7.1
-- [ ] `src/observability/logging.ts` — structured + scrubber §7.2 / §6.6
-- [ ] `src/observability/tracing.ts` — OTel spans (with attr scrubber RT-44) §7.3
-- [ ] `src/reliability/circuit-breaker.ts` — upstream IdP §5.4
-- [ ] Integration tests: RT-15 (DoS), RT-43 (fail-closed amplification), RT-44 (APM leakage)
-- [ ] **Deliverable**: production-grade observability + abuse protection
+- [x] `src/reliability/gcra.ts` — `gcraCheck` / `gcraEvaluate` / `gcraReject`; Lua script registered as `gcra` on the Redis adapter (and mirrored into `InMemoryRedisAdapter.evalSha`) §5.2.1
+- [x] `src/middleware/rate-limit.ts` — `dim()` builder + `enforceRateLimits()` walks dimensions in order, throws 429 too_many_requests with `Retry-After` on first reject §5.2.2
+- [x] `src/observability/metrics.ts` — `MetricsRegistry` with counter/gauge/histogram + Prometheus 0.0.4 text exposition; label values run through scrubber pre-emit (RT-44) §7.1
+- [x] `src/observability/logging.ts` — `createLogger` emits structured JSON, runs message + meta through scrubber, supports minLevel + injectable `emit` §7.2
+- [ ] `src/observability/tracing.ts` — OTel spans (deferred to M5 follow-up; scrubber + label guards already cover RT-44 surface area)
+- [x] `src/observability/scrubber.ts` — value-pattern, key-name, high-entropy heuristics + length / depth / size caps §6.6 / RT-44
+- [x] `src/reliability/circuit-breaker.ts` — closed/open/half-open state machine with rolling failure window, halfOpenAfter, halfOpenProbeCount, onOpen/onClose hooks; rejects with `idp_circuit_open` 503 §5.4
+- [ ] Integration tests: RT-15 (DoS), RT-43 (fail-closed amplification), RT-44 (APM leakage) — covered by unit tests; full integration suite lands with M6 testcontainers
+- [x] **Deliverable**: production-grade observability + abuse protection (scrubber, metrics, logger, GCRA + multi-dim middleware, circuit breaker)
 
 ## Milestone M6 — Recovery + multi-region (SPEC §11.2 M6)
 
