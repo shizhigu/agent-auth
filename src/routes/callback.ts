@@ -30,7 +30,6 @@
  *     identity's account_id.
  */
 
-import { AgentAuthError } from '../errors.js';
 import type { PostgresAdapter } from '../storage/postgres-adapter.js';
 import type { KmsAdapter } from '../storage/kms-adapter.js';
 import { seal } from '../crypto/sealed-box.js';

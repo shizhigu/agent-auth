@@ -8,10 +8,9 @@ import {
   type ValidateKeyDeps,
 } from '../../src/middleware/validate-key.js';
 import { LocalCache } from '../../src/cache/local-cache.js';
-import { InMemoryRedisAdapter, KEY_PREFIX_KEY } from '../../src/storage/redis-adapter.js';
+import { InMemoryRedisAdapter } from '../../src/storage/redis-adapter.js';
 import { InMemoryKmsAdapter } from '../../src/storage/kms-adapter.js';
 import { hmacWithPepper } from '../../src/crypto/hmac-pepper.js';
-import { AgentAuthError } from '../../src/errors.js';
 import type { PostgresAdapter } from '../../src/storage/postgres-adapter.js';
 import type {
   AccountStatus,

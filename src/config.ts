@@ -8,6 +8,7 @@ import type { Clock, IdentityProvider } from './types.js';
 import type { KmsAdapter } from './storage/kms-adapter.js';
 import type { RedisAdapter } from './storage/redis-adapter.js';
 import type { PostgresAdapter } from './storage/postgres-adapter.js';
+import type { WormPutter } from './audit/worm-writer.js';
 
 export type ValidationMode =
   /** Always read epoch from Redis on every validation (1 RTT). */
@@ -120,13 +121,13 @@ export interface AgentAuthConfig {
     readonly postgres: PostgresAdapter;
     readonly redis: RedisAdapter;
     readonly kms: KmsAdapter;
-    /** Optional in v0.1, recommended for production (§6.4.2). */
-    readonly audit_worm?: {
-      readonly putObject: (input: {
-        Key: string;
-        Body: string | Buffer;
-      }) => Promise<void>;
-    };
+    /**
+     * Optional in v0.1, recommended for production (§6.4.2). The lib's
+     * `writeAuditToWorm` uses this to mirror audit rows to S3 Object Lock.
+     * Production SaaS apps construct an `AwsS3WormPutter`; tests can plug
+     * in `InMemoryWormPutter`. Both ship from `agent-auth/audit/worm-writer`.
+     */
+    readonly audit_worm?: WormPutter;
   };
 
   readonly rate_limit?: RateLimitConfig;

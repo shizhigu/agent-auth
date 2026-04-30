@@ -106,3 +106,23 @@ export type {
   PepperMaterial,
   EncryptedBlob,
 } from './storage/kms-adapter.js';
+
+export {
+  writeAuditRow,
+  writeAuditRowOnClient,
+  pseudonymizeIp,
+} from './audit/db-writer.js';
+export type { AuditWriteInput, AuditWriteResult, AuditDbDeps } from './audit/db-writer.js';
+
+export {
+  AwsS3WormPutter,
+  InMemoryWormPutter,
+  writeAuditToWorm,
+} from './audit/worm-writer.js';
+export type {
+  WormPutter,
+  AwsS3WormPutterConfig,
+  AuditWormConfig,
+  AuditWormEvent,
+  S3WormPut,
+} from './audit/worm-writer.js';

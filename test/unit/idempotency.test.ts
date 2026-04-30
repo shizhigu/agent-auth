@@ -6,7 +6,6 @@ import {
 import { TierBTimeoutError } from '../../src/distributed/tier-b-commit.js';
 import { AgentAuthError, ServiceUnavailableError } from '../../src/errors.js';
 import type { PostgresAdapter } from '../../src/storage/postgres-adapter.js';
-import type { PoolClient } from 'pg';
 
 // ---------------------------------------------------------------------------
 // FakePg: minimal model of agent_idempotency for the framework's queries

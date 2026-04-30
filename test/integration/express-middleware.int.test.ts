@@ -26,7 +26,7 @@ import {
 } from '../../src/index.js';
 import { resolveConfig } from '../../src/config.js';
 import type { AgentContext, IdentityProvider } from '../../src/types.js';
-import { AgentAuthError, isAgentAuthError } from '../../src/errors.js';
+import { isAgentAuthError } from '../../src/errors.js';
 import type { Server } from 'node:http';
 
 class StubProvider implements IdentityProvider {

@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, beforeAll } from 'vitest';
-import { randomBytes } from 'node:crypto';
 import { callback } from '../../src/routes/callback.js';
 import { open as sealedOpen, sealedBoxReady, keypair } from '../../src/crypto/sealed-box.js';
 import { InMemoryKmsAdapter } from '../../src/storage/kms-adapter.js';
