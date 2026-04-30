@@ -206,6 +206,129 @@ describe('integration: webhook (SPEC §2.2.4 / RT-6 / RT-30)', () => {
     expect(alerts).toContainEqual({ label: 'webhook_id_collision_with_payload_mismatch' });
   });
 
+  it('RT-42 dual-secret rotation: deliveries signed with previous secret are accepted during the window', async () => {
+    // Configure a provider in the rotation window: secret_v2 is current,
+    // secret_v1 is the previous value GitHub may still be using.
+    const SECRET_V1 = 'rt42-prev-secret-v1';
+    const SECRET_V2 = 'rt42-curr-secret-v2';
+    const rotatingProvider = new GitHubAppProvider({
+      client_id: 'Iv1.int',
+      client_secret: 'cs',
+      webhook_secret: SECRET_V2,
+      webhook_secret_previous: SECRET_V1,
+    });
+
+    // Signed with the OLD secret — emulates a delivery sent mid-rotation
+    // before GitHub picked up the new secret.
+    const body = Buffer.from(
+      JSON.stringify({ action: 'revoked', sender: { id: 333333, login: 'rt42-octo' } }),
+      'utf8',
+    );
+    const sigOld = 'sha256=' + createHmac('sha256', SECRET_V1).update(body).digest('hex');
+    const delivery = randomUUID();
+    const before = await fix.postgres.queryOne<{ count: string }>(
+      `SELECT count(*)::text AS count FROM agent_webhook_events WHERE id = $1`,
+      [delivery],
+    );
+    expect(Number(before?.count ?? '0')).toBe(0);
+
+    const out = await handleWebhookRequest(
+      {
+        provider: 'github_app',
+        headers: {
+          'x-hub-signature-256': sigOld,
+          'x-github-event': 'github_app_authorization',
+          'x-github-delivery': delivery,
+        },
+        raw_body: body,
+      },
+      {
+        postgres: fix.postgres,
+        redis: fix.redis,
+        identity_providers: [rotatingProvider],
+        region: 'us-east-1',
+      },
+    );
+    // Sender id has no matching identity in this fixture, so the lib treats
+    // the action as a no-op revoke (status 'ignored' or 'processed' with no
+    // invalidations) — but importantly NOT 'duplicate' and not 401.
+    expect(['processed', 'ignored']).toContain(out.status);
+    // The webhook_events row was written (delivery accepted post-HMAC).
+    const after = await fix.postgres.queryOne<{ count: string }>(
+      `SELECT count(*)::text AS count FROM agent_webhook_events WHERE id = $1`,
+      [delivery],
+    );
+    expect(Number(after?.count ?? '0')).toBe(1);
+
+    // Sanity: same body signed with the CURRENT secret also passes.
+    const delivery2 = randomUUID();
+    const sigNew = 'sha256=' + createHmac('sha256', SECRET_V2).update(body).digest('hex');
+    const out2 = await handleWebhookRequest(
+      {
+        provider: 'github_app',
+        headers: {
+          'x-hub-signature-256': sigNew,
+          'x-github-event': 'github_app_authorization',
+          'x-github-delivery': delivery2,
+        },
+        raw_body: body,
+      },
+      {
+        postgres: fix.postgres,
+        redis: fix.redis,
+        identity_providers: [rotatingProvider],
+        region: 'us-east-1',
+      },
+    );
+    expect(['processed', 'ignored']).toContain(out2.status);
+  });
+
+  it('RT-42 rotation window closed: delivery signed with old secret is rejected 401', async () => {
+    // Provider configured WITHOUT webhook_secret_previous (rotation done,
+    // grace window closed). Old-secret traffic must fail closed.
+    const closedProvider = new GitHubAppProvider({
+      client_id: 'Iv1.int',
+      client_secret: 'cs',
+      webhook_secret: 'rt42-curr-secret-v2',
+      // no webhook_secret_previous
+    });
+
+    const body = Buffer.from(
+      JSON.stringify({ action: 'revoked', sender: { id: 444444 } }),
+      'utf8',
+    );
+    const sigOld =
+      'sha256=' + createHmac('sha256', 'rt42-prev-secret-v1').update(body).digest('hex');
+    const delivery = randomUUID();
+    const beforeCount = await fix.postgres.queryOne<{ count: string }>(
+      `SELECT count(*)::text AS count FROM agent_webhook_events`,
+    );
+    await expect(
+      handleWebhookRequest(
+        {
+          provider: 'github_app',
+          headers: {
+            'x-hub-signature-256': sigOld,
+            'x-github-event': 'github_app_authorization',
+            'x-github-delivery': delivery,
+          },
+          raw_body: body,
+        },
+        {
+          postgres: fix.postgres,
+          redis: fix.redis,
+          identity_providers: [closedProvider],
+          region: 'us-east-1',
+        },
+      ),
+    ).rejects.toMatchObject({ status: 401 });
+    // Verify-before-dedup invariant — no row inserted on HMAC failure.
+    const afterCount = await fix.postgres.queryOne<{ count: string }>(
+      `SELECT count(*)::text AS count FROM agent_webhook_events`,
+    );
+    expect(afterCount?.count).toBe(beforeCount?.count);
+  });
+
   it('rejects 401-class on bad HMAC and writes nothing to agent_webhook_events', async () => {
     const body = makeBody();
     const delivery = randomUUID();

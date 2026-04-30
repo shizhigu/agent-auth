@@ -67,7 +67,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - [x] `src/identity/github-app/webhook.ts` — implemented as `GitHubAppProvider.handleWebhook` (constant-time HMAC, dual-secret rotation per RT-42, JSON parse, `revoke_identity` action for `github_app_authorization` action='revoked') §2.2.4
 - [x] `src/jobs/webhook-replay.ts` — `runWebhookReplay(deps)` paginates `/app/hook/deliveries`, skips delivered (2xx) and processed locally, triggers redelivery, updates `agent_webhook_replay_state` cursor + status + cap_hit metric §2.2.5
 - [x] Cascade identity-revoke → key-revoke pipeline (revoked identity ⇒ all active+rotating keys ⇒ epoch + log + cache invalidate; account suspended if no other primary identity remains) §2.2.4
-- [ ] Integration tests: RT-6 (replay), RT-30 (spoof / order gap), RT-42 (secret rotation race) — covered by unit tests; testcontainers suite lands with M5
+- [x] Integration tests: RT-6 (replay), RT-30 (spoof / order gap), RT-42 (secret rotation race) — `webhook.int.test.ts` (6 tests): RT-6 replay returns 'duplicate'; RT-30 collision raises onAlert with `webhook_id_collision_with_payload_mismatch`; RT-42 dual-secret window accepts deliveries signed with `webhook_secret_previous` AND with current secret; RT-42 closed window (no `webhook_secret_previous`) rejects old-secret deliveries 401
 - [x] **Deliverable**: GitHub revocations reach our system (route + provider + cascade + replay job)
 
 ## Milestone M5 — Rate limiting + observability (SPEC §11.2 M5)
@@ -146,15 +146,17 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - **Unit tests**: 274 passing across 37 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
-- **Integration**: 60 passing against real Postgres 16 + Redis 7
-  (testcontainers, ~68 s):
+- **Integration**: 62 passing against real Postgres 16 + Redis 7
+  (testcontainers, ~65 s):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
     fallback, invalid_secret rejection.
   - revoke.int (2): Tier B revoke writes log + bumps epoch + invalidates
     cache; idempotent replay no-ops.
-  - webhook.int (4): cascade revoke (active + rotating keys + account
+  - webhook.int (6): cascade revoke (active + rotating keys + account
     suspension); RT-6 replay returns 'duplicate'; RT-30 collision raises
-    onAlert; bad HMAC writes nothing to agent_webhook_events.
+    onAlert; RT-42 dual-secret rotation window accepts both previous
+    and current; RT-42 closed window (no webhook_secret_previous) rejects
+    old-secret traffic 401; bad HMAC writes nothing to agent_webhook_events.
   - registration.int (4): full /begin → /callback → /status flow; sealed
     payload decrypts to validate-able key; RT-29 replay /callback rejected
     (single-use nonce); RT-31 audience-mismatch (lying provider) →
