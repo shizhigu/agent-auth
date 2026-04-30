@@ -105,6 +105,135 @@ describe('integration: webhook replay polling (SPEC §2.2.5)', () => {
     expect(Number(state?.total_redelivered)).toBeGreaterThanOrEqual(1);
   });
 
+  it('cap_hit is NOT set when the final iteration breaks via partial page (SPEC §2.2.5 alert correctness)', async () => {
+    // Reset replay state cursor so we don't hit the watermark from the
+    // previous test.
+    await fix.postgres.query(
+      `UPDATE agent_webhook_replay_state
+          SET last_seen_delivery_id = NULL, last_run_status = NULL,
+              config_max_pages = 2
+        WHERE provider = 'github_app'`,
+    );
+    // GitHub returns reverse-chronological. We seed exactly 50 deliveries
+    // (ALL with non-cap status) and config_max_pages = 2. The loop:
+    //   iter 1: fetches 50 deliveries (page.length < 100) → break with
+    //           stoppedEarly=true.
+    // pageCount=1, max_pages=2. Condition: pageCount < max_pages still
+    // true. We exited via break, so cap_hit MUST be false. Pre-fix this
+    // worked; the bug only surfaces when pageCount == max_pages on a
+    // partial-page break.
+    const recentTs = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const deliveries = Array.from({ length: 50 }, (_, i) => ({
+      id: 1000 + i,
+      guid: `00000000-0000-0000-0000-${String(i).padStart(12, '0')}`,
+      event: 'github_app_authorization',
+      status_code: 500,
+      delivered_at: recentTs,
+    }));
+    const triggered = new Set<number>();
+    const result = await runWebhookReplay({
+      postgres: fix.postgres,
+      fetcher: makeFetcher(deliveries, triggered),
+      buildAppJwt: async () => 'stub-jwt',
+    });
+    expect(result.cap_hit).toBe(false);
+    expect(result.status).toBe('ok');
+  });
+
+  it('cap_hit is NOT set when the LAST iteration (== max_pages) breaks via partial page (regression)', async () => {
+    // Reset state.
+    await fix.postgres.query(
+      `UPDATE agent_webhook_replay_state
+          SET last_seen_delivery_id = NULL, last_run_status = NULL,
+              config_max_pages = 1
+        WHERE provider = 'github_app'`,
+    );
+    // 50 deliveries (partial page) + max_pages=1 → loop runs exactly 1
+    // iteration, breaks via `page.length < 100`. pageCount=1, max_pages=1.
+    // Pre-fix: post-loop check `pageCount >= max_pages` was true → false
+    // cap_hit. Post-fix: stoppedEarly was set on the break path → cap_hit
+    // is false.
+    const recentTs = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const deliveries = Array.from({ length: 50 }, (_, i) => ({
+      id: 2000 + i,
+      guid: `00000000-0000-0000-0001-${String(i).padStart(12, '0')}`,
+      event: 'installation', // non-target event; no actual redelivery, just exercises the loop
+      status_code: 500,
+      delivered_at: recentTs,
+    }));
+    const triggered = new Set<number>();
+    const result = await runWebhookReplay({
+      postgres: fix.postgres,
+      fetcher: makeFetcher(deliveries, triggered),
+      buildAppJwt: async () => 'stub-jwt',
+    });
+    // Pre-fix this would be true (false positive); post-fix it must be false.
+    expect(result.cap_hit).toBe(false);
+    expect(result.status).toBe('ok');
+  });
+
+  it('cap_hit IS set when every page is full and the loop exits via condition only (real backlog)', async () => {
+    // Reset state and restore reasonable max_pages.
+    await fix.postgres.query(
+      `UPDATE agent_webhook_replay_state
+          SET last_seen_delivery_id = NULL, last_run_status = NULL,
+              config_max_pages = 2
+        WHERE provider = 'github_app'`,
+    );
+    const recentTs = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    // 250 deliveries → 3 pages of size 100, 100, 50. With max_pages=2 we
+    // process the first 200 (full pages), exhaust the budget, and exit
+    // via the WHILE condition. cap_hit MUST be true.
+    const deliveries = Array.from({ length: 250 }, (_, i) => ({
+      id: 3000 + i,
+      guid: `00000000-0000-0000-0002-${String(i).padStart(12, '0')}`,
+      event: 'installation',
+      status_code: 500,
+      delivered_at: recentTs,
+    }));
+    // Custom fetcher that paginates: first call returns first 100, second
+    // call returns next 100 (cursor-based).
+    const triggered = new Set<number>();
+    const fetcher: Fetcher = async (input) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (/\/app\/hook\/deliveries\?/.test(url) || /\/app\/hook\/deliveries$/.test(url)) {
+        const u = new URL(url);
+        const cursor = u.searchParams.get('cursor');
+        let start = 0;
+        if (cursor) {
+          const idx = deliveries.findIndex((d) => d.guid === cursor);
+          start = idx + 1;
+        }
+        const slice = deliveries.slice(start, start + 100);
+        return new Response(JSON.stringify(slice), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      const m = /\/app\/hook\/deliveries\/(\d+)\/attempts$/.exec(url);
+      if (m) {
+        triggered.add(Number(m[1]));
+        return new Response('', { status: 202 });
+      }
+      return new Response('not found', { status: 404 });
+    };
+    const alerts: Array<string> = [];
+    const result = await runWebhookReplay({
+      postgres: fix.postgres,
+      fetcher,
+      buildAppJwt: async () => 'stub-jwt',
+      onAlert: (label) => alerts.push(label),
+    });
+    expect(result.cap_hit).toBe(true);
+    expect(result.status).toBe('cap_hit');
+    expect(alerts).toContain('agent_auth.webhook_replay.cap_hit');
+    // Restore max_pages so subsequent tests don't carry the small cap.
+    await fix.postgres.query(
+      `UPDATE agent_webhook_replay_state
+          SET config_max_pages = 10 WHERE provider = 'github_app'`,
+    );
+  });
+
   it('catch-up: subsequent run with last_seen_delivery_id starts at latest and STOPS at the watermark (does not skip new deliveries)', async () => {
     // Seed the replay-state cursor so the next run is "incremental".
     const watermarkGuid = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';

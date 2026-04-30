@@ -151,7 +151,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - **Unit tests**: 326 passing across 44 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
-- **Integration**: 84 passing against real Postgres 16 + Redis 7
+- **Integration**: 87 passing against real Postgres 16 + Redis 7
   (testcontainers, ~80 s — healthz unhealthy-path waits ioredis retries):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
     fallback, invalid_secret rejection.
@@ -449,3 +449,18 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
      `agent_revocation_log` INSERT in both runbooks. Two-row
      forensic trail per admin op: intent (cli.ts) + commit
      (in-tx). Integration test asserts both rows present.
+  22. **§2.2.5 webhook-replay false-positive cap_hit** —
+     `runWebhookReplay`'s post-loop check
+     `if (pageCount >= max_pages) capHit = true` would fire
+     spuriously whenever the loop broke via partial page,
+     watermark, cutoff, or empty-page on iteration N where
+     N == max_pages. Operators paged about a backlog that
+     didn't exist; `last_run_status='cap_hit'` analytics
+     over-counted. Fix: track `stoppedEarly` on every break
+     path; cap_hit is `!stoppedEarly` — only true when the
+     WHILE condition itself failed (real budget exhaustion).
+     Three integration regressions: pre-watermark-only-50
+     (cap_hit false), partial-on-last-iter (cap_hit false —
+     pre-fix this was true), and a real cap-hit case
+     (cap_hit true with onAlert). Also dropped the unused
+     `hitWatermark` flag.

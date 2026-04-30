@@ -94,8 +94,14 @@ export async function runWebhookReplay(
   let pageCount = 0;
   let redelivered = 0;
   let firstDeliveryThisPage: string | null = null;
-  let capHit = false;
-  let hitWatermark = false;
+  // We exited the loop "naturally" if any of the inner break paths
+  // fired (empty page, watermark hit, cutoff, partial page). cap_hit
+  // is the WHILE condition failing on its own — i.e., we ran the full
+  // budget AND the last page was full AND we never hit the watermark
+  // or cutoff. Without this flag, exits via partial-page-on-iteration-N
+  // (where N == max_pages) would falsely report cap_hit and page
+  // operators about a backlog that doesn't exist.
+  let stoppedEarly = false;
 
   while (pageCount < state.config_max_pages) {
     pageCount++;
@@ -117,7 +123,10 @@ export async function runWebhookReplay(
       return { inspected_pages: pageCount, redelivered, cap_hit: false, status: 'failed' };
     }
     const page = (await resp.json()) as DeliverySummary[];
-    if (!Array.isArray(page) || page.length === 0) break;
+    if (!Array.isArray(page) || page.length === 0) {
+      stoppedEarly = true;
+      break;
+    }
 
     if (firstDeliveryThisPage === null) {
       firstDeliveryThisPage = page[0]!.guid;
@@ -129,7 +138,6 @@ export async function runWebhookReplay(
       // (older) were already handled by a prior run.
       if (stopAtGuid !== null && delivery.guid === stopAtGuid) {
         stop = true;
-        hitWatermark = true;
         break;
       }
       const deliveredAt = Date.parse(delivery.delivered_at);
@@ -161,13 +169,18 @@ export async function runWebhookReplay(
       );
       if (trigger.ok) redelivered++;
     }
-    if (stop) break;
-    if (page.length < 100) break;
+    if (stop) {
+      stoppedEarly = true;
+      break;
+    }
+    if (page.length < 100) {
+      stoppedEarly = true;
+      break;
+    }
     cursor = page[page.length - 1]!.guid;
   }
-  void hitWatermark;
-  if (pageCount >= state.config_max_pages) {
-    capHit = true;
+  const capHit = !stoppedEarly;
+  if (capHit) {
     deps.onAlert?.('agent_auth.webhook_replay.cap_hit', {
       max_pages: state.config_max_pages,
     });
