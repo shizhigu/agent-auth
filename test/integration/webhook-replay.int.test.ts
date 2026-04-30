@@ -104,4 +104,62 @@ describe('integration: webhook replay polling (SPEC §2.2.5)', () => {
     expect(state?.last_run_status).toBe('ok');
     expect(Number(state?.total_redelivered)).toBeGreaterThanOrEqual(1);
   });
+
+  it('catch-up: subsequent run with last_seen_delivery_id starts at latest and STOPS at the watermark (does not skip new deliveries)', async () => {
+    // Seed the replay-state cursor so the next run is "incremental".
+    const watermarkGuid = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+    await fix.postgres.query(
+      `UPDATE agent_webhook_replay_state
+          SET last_seen_delivery_id = $1, last_run_at = now()
+        WHERE provider = 'github_app'`,
+      [watermarkGuid],
+    );
+
+    const recentTs = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    // GitHub returns reverse-chronological. The newest deliveries are at
+    // the top; the watermark sits in the middle. The replay must:
+    // (a) trigger redelivery for the newer entries (above the watermark),
+    // (b) stop at the watermark, and
+    // (c) NOT touch entries older than the watermark (already processed
+    //     in a prior run).
+    const newGuid = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+    const olderGuid = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+    const deliveries = [
+      // NEWER than watermark — must be redelivered.
+      {
+        id: 200,
+        guid: newGuid,
+        event: 'github_app_authorization',
+        status_code: 500,
+        delivered_at: recentTs,
+      },
+      // The watermark itself — STOP here, do NOT redeliver.
+      {
+        id: 201,
+        guid: watermarkGuid,
+        event: 'github_app_authorization',
+        status_code: 500,
+        delivered_at: recentTs,
+      },
+      // OLDER than watermark — must NOT be touched.
+      {
+        id: 202,
+        guid: olderGuid,
+        event: 'github_app_authorization',
+        status_code: 500,
+        delivered_at: recentTs,
+      },
+    ];
+
+    const triggered = new Set<number>();
+    const result = await runWebhookReplay({
+      postgres: fix.postgres,
+      fetcher: makeFetcher(deliveries, triggered),
+      buildAppJwt: async () => 'stub-jwt',
+    });
+    expect(result.status).toBe('ok');
+    expect(result.redelivered).toBe(1);
+    // Only the NEW delivery was triggered.
+    expect(triggered).toEqual(new Set([200]));
+  });
 });

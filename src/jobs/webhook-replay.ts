@@ -82,11 +82,20 @@ export async function runWebhookReplay(
   const cutoff = new Date(now.getTime() - state.config_lookback_hours * 3600 * 1000);
 
   const jwt = await deps.buildAppJwt();
-  let cursor: string | null = state.last_seen_delivery_id;
+  // GitHub's `cursor` query param fetches deliveries OLDER than the given
+  // guid — pagination is reverse-chronological. So we always START at the
+  // latest (cursor=null) and let `last_seen_delivery_id` act as the inner-
+  // loop EARLY-STOP marker once we recognize previously-processed territory.
+  // Initial bug: cursor was seeded from `state.last_seen_delivery_id`,
+  // which made the catch-up run skip past every NEW delivery and only
+  // re-scan already-processed older ones.
+  let cursor: string | null = null;
+  const stopAtGuid = state.last_seen_delivery_id;
   let pageCount = 0;
   let redelivered = 0;
   let firstDeliveryThisPage: string | null = null;
   let capHit = false;
+  let hitWatermark = false;
 
   while (pageCount < state.config_max_pages) {
     pageCount++;
@@ -116,6 +125,13 @@ export async function runWebhookReplay(
 
     let stop = false;
     for (const delivery of page) {
+      // Reach previously-processed territory? Stop. Subsequent deliveries
+      // (older) were already handled by a prior run.
+      if (stopAtGuid !== null && delivery.guid === stopAtGuid) {
+        stop = true;
+        hitWatermark = true;
+        break;
+      }
       const deliveredAt = Date.parse(delivery.delivered_at);
       if (Number.isFinite(deliveredAt) && deliveredAt < cutoff.getTime()) {
         stop = true;
@@ -149,6 +165,7 @@ export async function runWebhookReplay(
     if (page.length < 100) break;
     cursor = page[page.length - 1]!.guid;
   }
+  void hitWatermark;
   if (pageCount >= state.config_max_pages) {
     capHit = true;
     deps.onAlert?.('agent_auth.webhook_replay.cap_hit', {
