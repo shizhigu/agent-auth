@@ -82,7 +82,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - [ ] `src/observability/tracing.ts` — OTel spans (deferred to M5 follow-up; scrubber + label guards already cover RT-44 surface area)
 - [x] `src/observability/scrubber.ts` — value-pattern, key-name, high-entropy heuristics + length / depth / size caps §6.6 / RT-44
 - [x] `src/reliability/circuit-breaker.ts` — closed/open/half-open state machine with rolling failure window, halfOpenAfter, halfOpenProbeCount, onOpen/onClose hooks; rejects with `idp_circuit_open` 503 §5.4
-- [ ] Integration tests: RT-15 (DoS), RT-43 (fail-closed amplification), RT-44 (APM leakage) — covered by unit tests; full integration suite lands with M6 testcontainers
+- [x] Integration / chaos tests: RT-15 (DoS) — `dos-rate-limit.chaos`; RT-43 (fail-closed amplification) — `fail-closed-amplification.chaos`; RT-44 (APM leakage) — unit (scrubber + metrics + logger). All three threats now have post-M6 coverage via the chaos + unit suites.
 - [x] **Deliverable**: production-grade observability + abuse protection (scrubber, metrics, logger, GCRA + multi-dim middleware, circuit breaker)
 
 ## Milestone M6 — Recovery + multi-region (SPEC §11.2 M6)
@@ -126,18 +126,18 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Cross-cutting / pre-release (SPEC §12.7)
 
-- [~] **44 RT-* threats: 28 covered, 16 explicitly out-of-scope or
-  operational §12.3** — unit + integration + chaos union covers
-  RT-3, 6, 9, 10, 12, 15, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
-  29, 30, 31, 32, 34, 39, 40, 41, 42, 43, 44. Gaps are (a) outside
-  lib boundary (RT-7 process-memory key theft, RT-8 SDK leakage,
-  RT-11 cross-tenant data leak in SaaS code), (b) operational /
-  process (RT-1 supply-chain, RT-2 pinning, RT-4 backup, RT-13
-  backup compromise, RT-14 SBOM, RT-16 cert pinning, RT-17 service
-  account, RT-33 retention, RT-35 dependency typosquat, RT-36 npm
-  publish chain, RT-37 KMS root rotation, RT-38 incident response
-  drills) — none of which are unit-testable in this lib. RT-5 is
-  reserved.
+- [x] **44 RT-* threats fully accounted for §12.3** — 32 covered
+  with unit/integration/chaos: RT-3, 6, 9, 10, 12, 14, 15, 18, 19,
+  20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 36,
+  38, 39, 40, 41, 42, 43, 44. 11 explicitly operational / SaaS-side
+  with documented disposition: RT-1 (phishing UX), RT-2 (TLS
+  pinning), RT-4 (backup compromise), RT-7 (agent process memory),
+  RT-8 (warm-tier Sybil), RT-11 (cross-tenant SaaS code), RT-13
+  (backup-storage compromise), RT-16 (cert pinning at deploy),
+  RT-17 (service-account creds), RT-35 (npm typosquat — Dependabot
+  reviewer guard configured), RT-37 (KMS root rotation). RT-5 is
+  reserved in SPEC. Full table at `docs/PRE_RELEASE_CHECKLIST.md`
+  (using `[x]` / `[op]` / `[reserved]` markers).
 - [x] **Integration suite §12.3** — 23 suites, 87 tests passing
   via `npm run test:integration` against real Postgres 16 + Redis 7
   testcontainers. `test/integration/setup.ts` boots fixtures,
@@ -159,15 +159,18 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
   Toxiproxy is the SPEC reference implementation; we use direct
   testcontainers control (stop/start) which exercises the same
   failure modes more deterministically.
-- [~] **Property-based tests pass §12.5** — fast-check covering
-  idempotency state-machine transitions
-  (`idempotency.property.test.ts`), `canonicalRequestHash`
-  (key-order invariance, array-order meaning, primitive type
-  stability, deep equality), and audit hash chain linkage
-  (`audit-chain.property.test.ts` — intact-chain invariance,
-  prev_hash/row_hash tampering detected at the right index,
-  adjacent-row swap detection). Rotation race property tests
-  deferred to v0.1.1.
+- [x] **Property-based tests pass §12.5** — fast-check covering all
+  four SPEC §12.5 example properties:
+  - GCRA invariants (`gcra.property.test.ts` — total accepts in
+    window ≤ burst, replenishment after period, cost > 1 weight
+    accounting, tat monotonicity).
+  - Idempotency state-machine transitions
+    (`idempotency.property.test.ts`).
+  - `canonicalRequestHash` (key-order invariance, array-order
+    meaning, primitive type stability, deep equality).
+  - Audit hash chain linkage (`audit-chain.property.test.ts` —
+    intact-chain invariance, prev_hash/row_hash tampering detected
+    at the right index, adjacent-row swap detection).
 - [x] **`npm run bench` within targets §12.6** — `bench/validation.bench.ts`:
   cache hit P99 ≈ 4 µs, cache-miss + HMAC P99 ≈ 9 µs (targets 50 ms / 100 ms).
 - [x] **Pre-release checklist §12.7** — `docs/PRE_RELEASE_CHECKLIST.md`
