@@ -32,6 +32,12 @@ CREATE TABLE IF NOT EXISTS agent_audit_log (
 CREATE TABLE IF NOT EXISTS agent_audit_log_default
   PARTITION OF agent_audit_log DEFAULT;
 
+-- Daily partition manager (SPEC §13.1.2) runs as agent_auth_migrator and
+-- needs to own the parent so it can CREATE TABLE … PARTITION OF. (PG
+-- requires the partitioner to be the owner of the parent.)
+ALTER TABLE agent_audit_log OWNER TO agent_auth_migrator;
+ALTER TABLE agent_audit_log_default OWNER TO agent_auth_migrator;
+
 CREATE INDEX IF NOT EXISTS agent_audit_account_ts
   ON agent_audit_log USING BRIN (account_id, ts);
 CREATE INDEX IF NOT EXISTS agent_audit_key_ts

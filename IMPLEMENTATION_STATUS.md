@@ -106,6 +106,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - [x] `src/audit/scrubber.ts` — folded into `src/observability/scrubber.ts` (single scrubber serves audit + logs + metrics); applied automatically by `writeAuditRow` and `writeAuditToWorm` §6.6
 - [x] `src/jobs/audit-verifier.ts` — daily-partition hash-chain integrity check via `verifyChain`; pages onAlert with `audit_hash_chain_break` + first break id/ts §6.4.1
 - [x] `src/jobs/outbox-flusher.ts` — drains `agent_audit_outbox` with retry budget; flags rows past `max_attempts` as `audit_outbox_stuck` for SREs §6.4.2
+- [x] `src/jobs/audit-partition-manager.ts` — daily partition manager (SPEC §3.8 / §13.1.2). Pre-creates `agent_audit_log_YYYY_MM_DD` partitions for the next N days (default 7); idempotent skip when already attached. Migration 0002 sets parent OWNER to `agent_auth_migrator` so the job role can attach.
 - [x] `scripts/dr-drill.sh` — quarterly DR drill: sample-prod-revoked → spot-check sandbox → assert audit chain present (§8.3.3)
 - [x] Integration tests: tamper detection (RT-12), audit omission (RT-39), WORM suppression (RT-28) — RT-12 in `audit-chain.int` (admin-role tamper of row_hash flips first_break_index); RT-39 in `audit-outbox.int` (failed PutObject → outbox → flusher drains); RT-28 in `audit-outbox.int` (Tier B event with failing WORM put now throws `ServiceUnavailableError(audit_unavailable)` per §6.4.2 — closes a real implementation gap where the writer was never failing closed)
 - [x] **Deliverable**: SOC 2 / GDPR-ready audit trail (in-DB chain + WORM mirror + outbox + verifier + DR drill)
@@ -147,11 +148,11 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Test summary at HEAD
 
-- **Unit tests**: 289 passing across 40 suites, ~930 ms wall (includes
+- **Unit tests**: 293 passing across 41 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
-- **Integration**: 69 passing against real Postgres 16 + Redis 7
-  (testcontainers, ~83 s — healthz unhealthy-path waits ioredis retries):
+- **Integration**: 72 passing against real Postgres 16 + Redis 7
+  (testcontainers, ~80 s — healthz unhealthy-path waits ioredis retries):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
     fallback, invalid_secret rejection.
   - revoke.int (2): Tier B revoke writes log + bumps epoch + invalidates
@@ -217,6 +218,10 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
   - healthz.int (2): GET /healthz §10.2 — 200 healthy with timeline_id
     + barrier_lsn from the live singleton; 503 unhealthy with reasons
     including 'redis_unreachable' after testcontainers stop().
+  - audit-partitions.int (3): SPEC §3.8 / §13.1.2 — manageAuditPartitions
+    creates lookahead_days (3) daily partitions with deterministic
+    YYYY_MM_DD names; rerun is idempotent (skipped); rows whose ts falls
+    inside a created partition are routed to it (not the default catch-all).
   - recover-account.int (1): full §2.9 / §2.2.2 case-C flow against
     real DB. Webhook-revoked identity is re-activated, new key issued
     bound to the same account_id, sealed payload decrypts to a
