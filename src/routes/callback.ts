@@ -332,18 +332,20 @@ export async function callback(
       return { status: 'failed' as const, reason: 'account_suspended_unsuspend_first' };
     }
 
-    // 5b. SPEC §2.9 owner-approval deny gate.
+    // 5b. SPEC §2.9 owner-approval gate (deny + defer-on-pending).
     //
     // /recover-account inserts an agent_recovery_approvals row with
     // decision='pending' and emits the signed approval webhook. The
-    // owner replies via /recover-account-confirm, flipping the decision
-    // to 'approved' or 'denied'. A 'denied' decision MUST block key
-    // issuance even if /callback got here first.
-    //
-    // (The full SPEC contract also defers issuance on 'pending' until
-    // approval lands; that's tracked as a deferred limitation. The
-    // deny check is the immediate win — without it a malicious
-    // recovery still issues a key when the owner explicitly said no.)
+    // owner replies via /recover-account-confirm, flipping the
+    // decision to 'approved' or 'denied':
+    //   - 'denied': fail-closed; never issue the key.
+    //   - 'pending': defer issuance — persist the OAuth-verified
+    //                identity_id on the session, leave status
+    //                'exchanging'. /recover-account-confirm finalizes
+    //                the session (issues key + seals + transitions to
+    //                'ready') when the owner approves.
+    //   - 'approved' | no-row: proceed to issuance (the no-row case
+    //     means the SaaS didn't configure owner_approval).
     if (session.kind === 'recover') {
       const apprRes = await client.query<{ decision: string | null }>(
         `SELECT decision FROM agent_recovery_approvals WHERE poll_token = $1`,
@@ -353,6 +355,32 @@ export async function callback(
       if (decision === 'denied') {
         await failSession(client, session.poll_token, 'owner_denied_recovery');
         return { status: 'failed' as const, reason: 'owner_denied_recovery' };
+      }
+      if (decision === 'pending') {
+        // Defer: stash the verified identity, leave status 'exchanging'.
+        // /recover-account-confirm will finalize on approve.
+        await client.query(
+          `UPDATE agent_registration_sessions
+              SET awaiting_identity_id = $2, account_id = $3
+            WHERE poll_token = $1`,
+          [session.poll_token, identity_id, account_id],
+        );
+        await writeAuditRowOnClient(client, {
+          event_type: 'recover_callback_deferred_for_owner_approval',
+          endpoint: '/api/agent-auth/callback/:provider',
+          status_class: 2,
+          account_id,
+          identity_id,
+          meta: {
+            provider: provider.name,
+            session_kind: session.kind,
+          },
+        });
+        return {
+          status: 'success' as const,
+          account_id,
+          is_first_key: false,
+        };
       }
     }
 

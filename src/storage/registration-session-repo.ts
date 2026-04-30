@@ -25,6 +25,10 @@ export interface RegistrationSessionRow {
   readonly status_message: string | null;
   readonly result_ciphertext: Buffer | null;
   readonly account_id: string | null;
+  /** SPEC §2.9: identity verified by /callback whose key issuance is
+   *  deferred to /recover-account-confirm on owner approval. NULL
+   *  outside that window. */
+  readonly awaiting_identity_id: string | null;
   readonly expires_at: Date;
   readonly created_at: Date;
 }

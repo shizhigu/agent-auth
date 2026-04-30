@@ -20,8 +20,12 @@ import { z } from 'zod';
 import { AgentAuthError } from '../errors.js';
 import { verifyInboundOwnerApproval } from '../identity/owner-approval-sign.js';
 import { writeAuditRowOnClient } from '../audit/db-writer.js';
+import { issueNewKey, buildSealedPayload } from '../identity/issue-key.js';
+import { seal } from '../crypto/sealed-box.js';
 import type { PostgresAdapter } from '../storage/postgres-adapter.js';
 import type { RedisAdapter } from '../storage/redis-adapter.js';
+import type { KmsAdapter } from '../storage/kms-adapter.js';
+import type { Tier } from '../types.js';
 
 const ConfirmBody = z
   .object({
@@ -48,6 +52,13 @@ export interface RecoverAccountConfirmDeps {
   readonly postgres: PostgresAdapter;
   readonly redis: RedisAdapter;
   readonly internal_secret: Buffer;
+  /** Required for SPEC §2.9 finalize-on-approve: when /callback
+   *  deferred key issuance because owner_approval was pending,
+   *  /recover-account-confirm needs KMS to issue the deferred key
+   *  on 'approved'. SaaSes that don't configure owner_approval can
+   *  omit this — the finalize path is gated on the session having
+   *  awaiting_identity_id != NULL. */
+  readonly kms?: KmsAdapter;
   readonly now?: () => number;
 }
 
@@ -157,6 +168,106 @@ export async function recoverAccountConfirm(
         reason: body.reason ?? null,
       },
     });
+
+    // SPEC §2.9 finalize-on-approve: if /callback deferred key
+    // issuance because the approval was pending, the session row has
+    // `awaiting_identity_id` set and `status='exchanging'`. Now that
+    // the owner has decided, we either:
+    //   - 'approved': issue the deferred key, seal to client_pubkey,
+    //     transition session to 'ready'.
+    //   - 'denied':   transition session to 'failed' with the SPEC
+    //     reason.
+    // If the session is already 'ready' / 'failed' (e.g. /callback ran
+    // BEFORE the owner decided and approval was 'approved' or
+    // 'denied' — see the deny-gate at the start of /callback), this
+    // path is a no-op.
+    const sessRes = await client.query<{
+      poll_token: string;
+      kind: string;
+      client_pubkey: Buffer;
+      awaiting_identity_id: string | null;
+      status: string;
+      account_tier: Tier | null;
+    }>(
+      // FOR UPDATE OF s — Postgres rejects FOR UPDATE on the nullable
+      // side of an outer join, so we explicitly scope the lock to the
+      // session row.
+      `SELECT s.poll_token, s.kind, s.client_pubkey,
+              s.awaiting_identity_id::text AS awaiting_identity_id,
+              s.status::text AS status,
+              a.tier::text AS account_tier
+         FROM agent_registration_sessions s
+         LEFT JOIN agent_accounts a ON a.id = s.account_id
+        WHERE s.poll_token = $1
+        FOR UPDATE OF s`,
+      [row.poll_token],
+    );
+    const sess = sessRes.rows[0];
+    if (
+      sess &&
+      sess.status === 'exchanging' &&
+      sess.awaiting_identity_id !== null &&
+      body.decision === 'approved' &&
+      sess.account_tier !== null
+    ) {
+      if (!deps.kms) {
+        throw new AgentAuthError(
+          500,
+          'internal_error',
+          'kms required to finalize deferred recovery — pass deps.kms',
+        );
+      }
+      const issued = await issueNewKey(client, deps.kms, {
+        account_id: row.account_id,
+        issuing_identity_id: sess.awaiting_identity_id,
+        tier: sess.account_tier,
+        scopes: ['read', 'self:rotate'],
+      });
+      const issuedAt = new Date();
+      const payload = buildSealedPayload({
+        key_bearer: issued.bearer,
+        key_id: issued.key_id,
+        account_id: row.account_id,
+        scopes: issued.scopes,
+        tier: issued.tier,
+        is_first_key: false,
+        issued_at: issuedAt,
+      });
+      const ciphertext = seal(payload, sess.client_pubkey);
+      await client.query(
+        `UPDATE agent_registration_sessions
+            SET status = 'ready', result_ciphertext = $2,
+                awaiting_identity_id = NULL
+          WHERE poll_token = $1 AND status = 'exchanging'`,
+        [row.poll_token, ciphertext],
+      );
+      await writeAuditRowOnClient(client, {
+        event_type: 'recover_finalized_after_owner_approval',
+        endpoint: '/api/agent-auth/recover-account-confirm',
+        status_class: 2,
+        account_id: row.account_id,
+        key_id: issued.key_id,
+        identity_id: sess.awaiting_identity_id,
+        meta: {
+          request_id: row.request_id,
+        },
+      });
+    } else if (
+      sess &&
+      sess.status === 'exchanging' &&
+      sess.awaiting_identity_id !== null &&
+      body.decision === 'denied'
+    ) {
+      // Owner denied a deferred-recovery session — fail it.
+      await client.query(
+        `UPDATE agent_registration_sessions
+            SET status = 'failed', status_message = 'owner_denied_recovery',
+                awaiting_identity_id = NULL
+          WHERE poll_token = $1 AND status = 'exchanging'`,
+        [row.poll_token],
+      );
+    }
+
     return {
       request_id: row.request_id,
       account_id: row.account_id,

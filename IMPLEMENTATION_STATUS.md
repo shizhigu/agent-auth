@@ -124,21 +124,6 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - [x] Integration tests: RT-10 (admin abuse), RT-38 (SSO compromise → break-glass) — RT-10 in `admin-cli.int` (RB-1 revoke-key end-to-end + RB-4 flush-cache rejected without co-signer / admitted with valid co-signer); RT-38 mitigation via `docs/break_glass.md` (per SPEC §8.1 break_glass.procedure reference) — independent break-glass admin path documented: physical YubiKeys + sealed-envelope JIT-RBAC seeds rooted independently of SSO, two-person co-sign required, audit `meta.break_glass=true` marker, 24h post-mortem mandate
 - [x] **Deliverable**: production-ready release pipeline (Sigstore + provenance + Scorecard + CODEOWNERS + JIT-RBAC + two-person)
 
-## Known gaps (deferred to v0.1.1)
-
-- **§2.9 owner_approval pending case** — partial fix shipped: the
-  deny path is now honored — /callback for kind='recover' looks
-  up `agent_recovery_approvals` and fails the session with
-  `owner_denied_recovery` if the owner has decided 'denied'
-  before /callback runs. The remaining gap is the "wait for
-  approval" semantic of SPEC §2.9 step 5: when the owner hasn't
-  yet decided ('pending'), /callback still issues the key
-  immediately rather than deferring. Closing that case requires
-  a multi-component refactor: schema migration to add
-  `awaiting_identity_id`, defer key issuance in /callback, add a
-  finalize path in /recover-account-confirm that issues the key
-  on 'approved'. Tracked for v0.1.1.
-
 ## Cross-cutting / pre-release (SPEC §12.7)
 
 - [~] **44 RT-* threats: 28 covered, 16 explicitly out-of-scope or
@@ -190,7 +175,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - **Unit tests**: 341 passing across 46 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
-- **Integration**: 91 passing against real Postgres 16 + Redis 7
+- **Integration**: 92 passing against real Postgres 16 + Redis 7
   (testcontainers, ~80 s — healthz unhealthy-path waits ioredis retries):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
     fallback, invalid_secret rejection.
@@ -576,3 +561,22 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
      via `extra_handlers`. 6 unit tests + 2 integration tests
      (against real Postgres) cover happy path, retry,
      dead-letter, unknown kind, and SKIP LOCKED concurrency.
+  29. **§2.9 owner-approval-gated recovery** — `emitOwnerApprovalRequest`
+     fired the signed approval webhook from /recover-account but
+     /callback issued the recovery key without checking the
+     decision, defeating the entire gating mechanism. SPEC §2.9
+     step 5 mandates "Wait for approval ... After approval (or
+     if not required) ... Issue NEW key". Two-phase fix shipped
+     across iters 90 + 91: (a) deny gate at the top of /callback
+     for kind='recover' fails the session with
+     `owner_denied_recovery` if the owner has already said no,
+     and (b) defer-on-pending stores the OAuth-verified
+     identity_id on the session via the new
+     `awaiting_identity_id` column (migration 0006), leaves
+     status 'exchanging', and /recover-account-confirm finalizes
+     on 'approved' by issuing the key + sealing to client_pubkey
+     + transitioning the session to 'ready'. End-to-end
+     integration test covers the full /recover-account →
+     /callback (deferred) → /recover-account-confirm (approved)
+     → /recover-account-status (completed) flow with sealed
+     payload decryption.
