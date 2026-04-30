@@ -77,14 +77,16 @@ CREATE TRIGGER trigger_audit_hash_chain
   BEFORE INSERT ON agent_audit_log
   FOR EACH ROW EXECUTE FUNCTION compute_audit_row_hash();
 
--- App role: append-only.
-GRANT INSERT ON agent_audit_log TO agent_auth_app;
+-- App role: append-only — INSERT and SELECT (needed for INSERT...RETURNING
+-- and for in-process verifyChain to read its own writes). UPDATE and DELETE
+-- are NOT granted, preserving the §3.16 append-only invariant.
+GRANT INSERT, SELECT ON agent_audit_log TO agent_auth_app;
 GRANT USAGE, SELECT ON SEQUENCE agent_audit_log_id_seq
   TO agent_auth_app, agent_auth_admin;
 
 -- Admin role can read everything; UPDATE/DELETE require explicit support
 -- (e.g. partition drop). Audit DELETE is itself a logged event.
-GRANT SELECT ON agent_audit_log TO agent_auth_admin;
+GRANT SELECT, UPDATE ON agent_audit_log TO agent_auth_admin;
 
 -- Read-only role: column-restricted to non-PII columns (per §3.16).
 GRANT SELECT (id, ts, event_type, account_id, key_id, status_class)

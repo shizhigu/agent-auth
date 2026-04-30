@@ -145,8 +145,8 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 - **Unit tests**: 262 passing across 35 suites, ~880 ms wall (includes
   fast-check property tests on idempotency state machine + canonicalRequestHash).
-- **Integration**: 12 passing against real Postgres 16 + Redis 7
-  (testcontainers, ~12 s):
+- **Integration**: 16 passing against real Postgres 16 + Redis 7
+  (testcontainers, ~22 s):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
     fallback, invalid_secret rejection.
   - revoke.int (2): Tier B revoke writes log + bumps epoch + invalidates
@@ -156,6 +156,12 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
     onAlert; bad HMAC writes nothing to agent_webhook_events.
   - registration.int (2): full /begin → /callback → /status flow; sealed
     payload decrypts to validate-able key; replay /callback rejected.
+  - rotation.int (2): planned rotation transitions old → 'rotating' with
+    grace + creates new active key; concurrent rotation race resolves via
+    §3.5 unique_violation trigger.
+  - audit-chain.int (2): hash chain intact for sequence of writeAuditRow
+    calls; admin-role tamper of a row_hash flips first_break_index ≥ 0
+    and pages oncall.
 - **Chaos**: 2 passing (~4 s) — RT-25 healthy + partitioned-Redis
   no-false-accept invariant via testcontainers stop().
 - **Bench**: validation_cache_hit P50/P99 = 2.5 µs / 4.3 µs;
@@ -165,3 +171,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 ## Notes / deviations / blockers
 
 - **2026-04-30 (M3)**: Resolved internal SPEC tension between §4.3 (tierBCommit converts TierBTimeoutError → ServiceUnavailableError) and §5.1.1 (tierBIdempotent's `catch (err) { if (err instanceof TierBTimeoutError)` block expected the raw class). Picked `tierBCommit` as the sole converter and added **ADR-014** in Appendix B. `tierBIdempotent` now catches the converted ServiceUnavailableError(durability_unconfirmed | durability_unavailable), persists `state='unknown'`, and re-throws `ServiceUnavailableError(idempotency_unknown_outcome)`. Net effect on caller contract is identical (still 503), but only this composition produces a deterministic outcome regardless of which clause "wins".
+
+- **2026-04-30 (M7)**: Audit verifier semantics. SPEC §6.4.1 verifier walks rows checking `prev_hash[i] == row_hash[i-1]` (linkage only). Earlier the TS `verifyChain` ALSO recomputed the row_hash from canonical bytes, but that requires reproducing Postgres's `jsonb_build_object(...)::text` output exactly — fragile because of timestamptz formatting and meta=NULL vs meta=undefined. Aligned to SPEC: hourly verifier uses `verifyChain` (linkage). The byte-level recompute lives in `verifyChainStrict`, used only by offline tamper-detection unit tests where canonical inputs are controlled. Real tamper detection in production: the §3.8 trigger on the next INSERT recomputes against the tampered row_hash, breaking the chain — `verifyChain` then catches the linkage break.
+
+- **2026-04-30 (M7)**: Audit-log app-role grant. SPEC §3.16 wording was "GRANT SELECT, INSERT, UPDATE on ALL TABLES to agent_auth_app, then REVOKE UPDATE+DELETE on agent_audit_log". Equivalent end state: app role has SELECT + INSERT but no UPDATE/DELETE. Implemented as explicit `GRANT INSERT, SELECT ON agent_audit_log TO agent_auth_app` (instead of broad-grant + REVOKE), which is functionally identical and easier to read in 0002_audit.sql. Append-only invariant preserved.

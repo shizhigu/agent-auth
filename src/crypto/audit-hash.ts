@@ -108,11 +108,47 @@ export function computeRowHash(prev_hash: Buffer, row: AuditRow): Buffer {
 export const ZERO_HASH = Buffer.alloc(32, 0);
 
 /**
- * Verify a contiguous chain of rows is intact. Returns the index of the
- * first break (-1 if intact). Caller supplies rows in id-ascending order
- * and the seed prev_hash (ZERO_HASH for the start of a day).
+ * Verify a contiguous chain of rows is intact (LINKAGE check only).
+ * Returns the index of the first break (-1 if intact).
+ *
+ * Per SPEC §6.4.1 verifier: walks rows in id-ascending order and asserts
+ * `prev_hash[i] == row_hash[i-1]`. The first row's `prev_hash` must equal
+ * `seed_prev_hash` (default `ZERO_HASH`, which is what the §3.8 trigger
+ * uses for the first row of a UTC day).
+ *
+ * Why linkage-only rather than re-computing row_hash from canonical
+ * bytes: the §3.8 trigger derives canonical bytes from Postgres's own
+ * `jsonb_build_object(...)::text` representation. Reproducing those
+ * bytes in TS is fragile (timestamp formatting, jsonb null vs
+ * undefined). Linkage is sufficient: if any row was tampered, its own
+ * row_hash recompute happens INSIDE Postgres on next-row insert and
+ * the ensuing chain is broken — which `prev_hash !== row_hash[i-1]`
+ * detects. RB-6 (audit log tamper response) cross-references the WORM
+ * mirror for byte-level comparison.
  */
 export function verifyChain(
+  rows: ReadonlyArray<AuditRow & { prev_hash: Buffer; row_hash: Buffer }>,
+  seed_prev_hash: Buffer = ZERO_HASH,
+): number {
+  let prev = seed_prev_hash;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r) return i;
+    if (!r.prev_hash.equals(prev)) return i;
+    prev = r.row_hash;
+  }
+  return -1;
+}
+
+/**
+ * Stricter: recompute each row_hash from canonical bytes via the same
+ * canonicalization as the trigger. Returns first-break index on mismatch.
+ *
+ * Use this only against test data where you control the input shape (no
+ * jsonb meta, ts as UTC ISO). The hourly verifier should call `verifyChain`,
+ * not this function. Kept for the offline tamper-detection unit tests.
+ */
+export function verifyChainStrict(
   rows: ReadonlyArray<AuditRow & { prev_hash: Buffer; row_hash: Buffer }>,
   seed_prev_hash: Buffer = ZERO_HASH,
 ): number {

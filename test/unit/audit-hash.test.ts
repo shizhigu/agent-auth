@@ -4,6 +4,7 @@ import {
   canonicalAuditText,
   ZERO_HASH,
   verifyChain,
+  verifyChainStrict,
   sha256Hex,
 } from '../../src/crypto/audit-hash.js';
 
@@ -102,10 +103,13 @@ describe('computeRowHash + verifyChain', () => {
     });
 
     // Tamper with row 2 (index 1) — change event_type without recomputing hashes.
+    // verifyChain (linkage-only) wouldn't catch a content edit that left
+    // prev_hash/row_hash intact; verifyChainStrict re-derives the canonical
+    // bytes and catches it.
     const tampered = built.map((r, i) =>
       i === 1 ? { ...r, event_type: 'evil' } : r,
     );
-    expect(verifyChain(tampered)).toBe(1);
+    expect(verifyChainStrict(tampered)).toBe(1);
   });
 
   it('detects prev_hash linkage break', () => {

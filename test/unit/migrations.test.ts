@@ -92,21 +92,20 @@ describe('SQL migrations — structural invariants (SPEC §3.17)', () => {
     expect(idem!.body).toMatch(/enforce_terminal_row_immutable/);
   });
 
-  it('app role has INSERT-only on agent_audit_log (no UPDATE/DELETE)', () => {
+  it('app role is append-only on agent_audit_log (INSERT/SELECT but no UPDATE/DELETE)', () => {
     const audit = readAll().find((m) => m.name === '0002_audit.sql')!;
-    // GRANT INSERT ON agent_audit_log TO agent_auth_app
+    // GRANT must contain INSERT (mandatory). SELECT is also granted so the
+    // writer's RETURNING clause and the in-process verifier can read.
     expect(audit.body).toMatch(
-      /GRANT\s+INSERT\s+ON\s+agent_audit_log\s+TO\s+agent_auth_app/,
+      /GRANT\s+INSERT,\s*SELECT\s+ON\s+agent_audit_log\s+TO\s+agent_auth_app/,
     );
-    // No GRANT UPDATE / DELETE for app on agent_audit_log
-    const lines = audit.body.split('\n');
-    const updateGrant = lines.find(
-      (l) => /GRANT[^;]*UPDATE/.test(l) && /agent_audit_log/.test(l) && /agent_auth_app/.test(l),
-    );
-    const deleteGrant = lines.find(
-      (l) => /GRANT[^;]*DELETE/.test(l) && /agent_audit_log/.test(l) && /agent_auth_app/.test(l),
-    );
-    expect(updateGrant).toBeUndefined();
-    expect(deleteGrant).toBeUndefined();
+    // No GRANT UPDATE / DELETE for app on agent_audit_log — preserves §3.16
+    // append-only invariant.
+    const block = audit.body
+      .split(/\n\s*\n/)
+      .filter((b) => /agent_auth_app/.test(b) && /agent_audit_log/.test(b))
+      .join('\n');
+    expect(/GRANT[^;]*UPDATE[^;]*agent_audit_log[^;]*agent_auth_app/.test(block)).toBe(false);
+    expect(/GRANT[^;]*DELETE[^;]*agent_audit_log[^;]*agent_auth_app/.test(block)).toBe(false);
   });
 });
