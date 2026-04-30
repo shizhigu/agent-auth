@@ -26,6 +26,29 @@ describe('InMemoryRedisAdapter — basic kv', () => {
     await r.set('b', '2');
     expect(await r.del('a', 'b', 'c')).toBe(2);
   });
+
+  it('setIfNotExists is atomic SET NX EX (RT-19 nonce single-use)', async () => {
+    const r = new InMemoryRedisAdapter();
+    // First call wins.
+    expect(await r.setIfNotExists('nonce:1', '1', 60)).toBe(true);
+    // Second call rejects (key already exists).
+    expect(await r.setIfNotExists('nonce:1', 'overwrite', 60)).toBe(false);
+    // Original value preserved.
+    expect(await r.get('nonce:1')).toBe('1');
+  });
+
+  it('setIfNotExists honors TTL — re-SET allowed after expiry', async () => {
+    let now = 1_000_000;
+    const r = new InMemoryRedisAdapter({ now: () => now });
+    expect(await r.setIfNotExists('nonce:2', 'v1', 60)).toBe(true);
+    // 30s later — still rejected.
+    now += 30_000;
+    expect(await r.setIfNotExists('nonce:2', 'v2', 60)).toBe(false);
+    // 90s later — TTL elapsed, claimable again.
+    now += 60_000;
+    expect(await r.setIfNotExists('nonce:2', 'v3', 60)).toBe(true);
+    expect(await r.get('nonce:2')).toBe('v3');
+  });
 });
 
 describe('InMemoryRedisAdapter — set ops', () => {

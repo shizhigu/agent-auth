@@ -82,17 +82,15 @@ export async function recoverAccountConfirm(
     ...(deps.now ? { now: deps.now } : {}),
   });
 
-  // 2. Single-use nonce (RT-19): SET NX EX on Redis. If the key already
-  //    exists, this is a replay → reject 401.
+  // 2. Single-use nonce (RT-19): atomic SET NX EX on Redis. If the key
+  //    already exists this is a replay → reject 401. Atomicity is critical
+  //    for concurrent requests with the same nonce — a GET-then-SET pair
+  //    would have a TOCTOU window between them.
   const nonceKey = NONCE_KEY_PREFIX + verified.nonce;
-  // Best-effort: ioredis adapter would need to expose `set NX`. We use GET+SET
-  // for the in-memory adapter; production deployments should swap in a real
-  // SET NX EX call (see ADR comment below).
-  const existing = await deps.redis.get(nonceKey);
-  if (existing) {
+  const claimed = await deps.redis.setIfNotExists(nonceKey, '1', NONCE_TTL_SECONDS);
+  if (!claimed) {
     throw new AgentAuthError(401, 'invalid_request', 'replay detected');
   }
-  await deps.redis.set(nonceKey, '1', { ex_seconds: NONCE_TTL_SECONDS });
 
   // 3. Validate body + look up approval row.
   type ConfirmBodyT = z.infer<typeof ConfirmBody>;

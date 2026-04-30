@@ -104,6 +104,17 @@ export interface RedisAdapter {
     value: string,
     opts?: { ex_seconds?: number },
   ): Promise<void>;
+  /**
+   * Atomic SET <key> <value> EX <ttl_seconds> NX. Returns true if the key
+   * was set (was absent), false if the key already existed (no-op). Used for
+   * single-use nonces (RT-19) where a GET-then-SET pair would have a
+   * TOCTOU race window between concurrent requests.
+   */
+  setIfNotExists(
+    key: string,
+    value: string,
+    ex_seconds: number,
+  ): Promise<boolean>;
   /** DEL <key1> [<key2> ...]. Returns count actually removed. */
   del(...keys: string[]): Promise<number>;
   /** SADD <set> <member1> [<member2> ...]. */
@@ -174,6 +185,16 @@ export class IoredisAdapter implements RedisAdapter {
     } else {
       await this.cfg.client.set(key, value);
     }
+  }
+
+  async setIfNotExists(
+    key: string,
+    value: string,
+    ex_seconds: number,
+  ): Promise<boolean> {
+    // ioredis returns 'OK' if SET succeeded, null if NX guard rejected.
+    const out = await this.cfg.client.set(key, value, 'EX', ex_seconds, 'NX');
+    return out === 'OK';
   }
 
   async del(...keys: string[]): Promise<number> {
@@ -310,6 +331,16 @@ export class InMemoryRedisAdapter implements RedisAdapter {
       entry.expires_at = this.now() + opts.ex_seconds * 1000;
     }
     this.kv.set(key, entry);
+  }
+
+  async setIfNotExists(
+    key: string,
+    value: string,
+    ex_seconds: number,
+  ): Promise<boolean> {
+    if (this.check(key)) return false;
+    this.kv.set(key, { value, expires_at: this.now() + ex_seconds * 1000 });
+    return true;
   }
 
   async del(...keys: string[]): Promise<number> {
