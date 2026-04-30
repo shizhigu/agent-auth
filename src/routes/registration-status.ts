@@ -36,6 +36,8 @@ export interface RegistrationStatusDeps {
   readonly postgres: PostgresAdapter;
   /** The endpoint variant — different routes accept different kinds. */
   readonly endpoint: RegistrationStatusEndpoint;
+  /** Override 'now' for tests. Defaults to Date.now. */
+  readonly now?: () => number;
 }
 
 const ENDPOINT_TO_KIND: Record<RegistrationStatusEndpoint, SessionKind> = {
@@ -76,7 +78,8 @@ export async function registrationStatus(
   const repo = new RegistrationSessionRepo(deps.postgres);
   const row = await repo.getByPollToken(parsed.data.poll_token);
   if (!row) throw new AgentAuthError(410, 'session_expired');
-  if (row.expires_at.getTime() < Date.now() && row.status !== 'ready') {
+  const now = (deps.now ?? Date.now)();
+  if (row.expires_at.getTime() < now && row.status !== 'ready') {
     throw new AgentAuthError(410, 'session_expired');
   }
 

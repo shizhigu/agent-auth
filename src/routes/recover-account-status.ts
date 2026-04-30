@@ -16,6 +16,8 @@ export type RecoverAccountStatusResponse = RegistrationStatusResponse;
 
 export interface RecoverAccountStatusDeps {
   readonly postgres: PostgresAdapter;
+  /** Override 'now' for tests. Defaults to Date.now. */
+  readonly now?: () => number;
 }
 
 export async function recoverAccountStatus(
@@ -25,5 +27,6 @@ export async function recoverAccountStatus(
   return registrationStatus(rawBody, {
     postgres: deps.postgres,
     endpoint: 'recover',
+    ...(deps.now !== undefined ? { now: deps.now } : {}),
   });
 }

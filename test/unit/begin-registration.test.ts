@@ -379,6 +379,41 @@ describe('registrationStatus (SPEC §10.1)', () => {
       ),
     ).rejects.toMatchObject({ status: 410, code: 'session_expired' });
   });
+
+  it('honors injectable clock for session expiry', async () => {
+    const pg = new FakePg();
+    const realNow = Date.now();
+    // Session expires 5 minutes from real-now.
+    pg.sessions.set('pak_' + 'y'.repeat(43), {
+      poll_token: 'pak_' + 'y'.repeat(43),
+      nonce: 'n',
+      pkce_verifier: 'v',
+      pkce_challenge: 'c',
+      audience: 'a',
+      expected_provider: 'github_app',
+      redirect_uri: 'r',
+      kind: 'register',
+      target_account_id: null,
+      client_pubkey: Buffer.alloc(32),
+      status: 'pending',
+      status_message: null,
+      result_ciphertext: null,
+      account_id: null,
+      expires_at: new Date(realNow + 5 * 60 * 1000),
+      created_at: new Date(realNow),
+    });
+    // With the injected clock 1 hour ahead, the session is expired.
+    await expect(
+      registrationStatus(
+        { poll_token: 'pak_' + 'y'.repeat(43) },
+        {
+          postgres: pg as unknown as PostgresAdapter,
+          endpoint: 'registration',
+          now: () => realNow + 60 * 60 * 1000,
+        },
+      ),
+    ).rejects.toMatchObject({ status: 410, code: 'session_expired' });
+  });
 });
 
 describe('reapRegistrationSessions (SPEC §3.6)', () => {
