@@ -187,4 +187,62 @@ describe('integration: idempotency (SPEC §5.1 / §3.13 / RT-27)', () => {
     const e = caught as { code?: string };
     expect(e.code).toBe('23514');
   });
+
+  it('concurrent calls with the SAME idempotency_key serialize on PK lock — both succeed, single reservation row', async () => {
+    // Iter 64 fix: phase-1 reservation uses INSERT ... ON CONFLICT (key)
+    // DO NOTHING. Two concurrent tierBIdempotent calls with the same key
+    // must NOT race into a 23505 → 500. The first INSERT wins; the second
+    // re-fetches, finds the same payload, sees state='pending' → throws
+    // 'idempotency_in_flight' (425). When the operation completes, a
+    // subsequent retry returns the cached response.
+    const idem_key = `int_idem_race_${Date.now()}`;
+    const base = {
+      idempotency_key: idem_key,
+      request_hash: canonicalRequestHash({ a: 1 }),
+      operation_type: 'revoke' as const,
+      resource_ref: `integration:race:${Date.now()}`,
+    };
+    let opCalls = 0;
+    // Slow operation so both racers' phase-2 windows overlap.
+    const slowOp = async (): Promise<{ status: number; body: unknown }> => {
+      opCalls++;
+      await new Promise<void>((r) => setTimeout(r, 80));
+      return { status: 200, body: { run: opCalls } };
+    };
+
+    const [out1, out2] = await Promise.allSettled([
+      tierBIdempotent(fix.postgres, base, slowOp),
+      tierBIdempotent(fix.postgres, base, slowOp),
+    ]);
+
+    // Exactly one operation runs (the other replays from the reservation).
+    // Both promises terminate without 500: either both succeed, or one
+    // succeeds and one is rejected with idempotency_in_flight (425).
+    expect(opCalls).toBe(1);
+    const fulfilled = [out1, out2].filter((r) => r.status === 'fulfilled');
+    const rejected = [out1, out2].filter((r) => r.status === 'rejected');
+    if (rejected.length > 0) {
+      // The loser saw state='pending' → 425 idempotency_in_flight.
+      const reason = (rejected[0]! as PromiseRejectedResult).reason as {
+        status?: number;
+        code?: string;
+      };
+      expect(reason.code).toBe('idempotency_in_flight');
+      expect(reason.status).toBe(425);
+    }
+    expect(fulfilled.length).toBeGreaterThanOrEqual(1);
+
+    // After both settle, the reservation row exists exactly once and
+    // state='completed'.
+    const rowCount = await fix.postgres.queryOne<{ c: string }>(
+      `SELECT count(*)::text AS c FROM agent_idempotency WHERE key = $1`,
+      [idem_key],
+    );
+    expect(Number(rowCount?.c ?? '0')).toBe(1);
+    const stateRow = await fix.postgres.queryOne<{ state: string }>(
+      `SELECT state FROM agent_idempotency WHERE key = $1`,
+      [idem_key],
+    );
+    expect(stateRow?.state).toBe('completed');
+  });
 });
