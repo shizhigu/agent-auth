@@ -146,8 +146,8 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - **Unit tests**: 274 passing across 37 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
-- **Integration**: 37 passing against real Postgres 16 + Redis 7
-  (testcontainers, ~42 s):
+- **Integration**: 40 passing against real Postgres 16 + Redis 7
+  (testcontainers, ~48 s):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
     fallback, invalid_secret rejection.
   - revoke.int (2): Tier B revoke writes log + bumps epoch + invalidates
@@ -193,6 +193,15 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
     already-processed deliveries, wrong event types, 2xx-acked, and
     older-than-lookback; triggers redelivery only for the rest;
     advances the replay cursor.
+  - rotate-key.int (2): emergency rotation flips old → revoked,
+    issues a new key whose sealed-box payload decrypts to a key that
+    validates; old bearer rejects 401 key_revoked; idempotent
+    emergency replay returns the cached new_key (operation not re-run).
+  - recover-account.int (1): full §2.9 / §2.2.2 case-C flow against
+    real DB. Webhook-revoked identity is re-activated, new key issued
+    bound to the same account_id, sealed payload decrypts to a
+    validate-able key; pre-revocation old key remains revoked (recover
+    does NOT resurrect old keys per §2.9 step 6).
 - **Chaos**: 14 passing (~10 s):
   - redis-partition (2): RT-25 healthy + partitioned-Redis no-false-accept
     invariant via testcontainers stop().
