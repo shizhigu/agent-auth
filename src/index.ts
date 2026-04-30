@@ -139,6 +139,11 @@ export { reconcileAccountKeySets } from './jobs/reconcile-redis-sets.js';
 export { manageAuditPartitions } from './jobs/audit-partition-manager.js';
 export { expireRotationGrace } from './jobs/rotation-grace-expirer.js';
 export { processAgentJobs } from './jobs/process-agent-jobs.js';
+export { reapExpiredRows } from './jobs/expired-rows-reaper.js';
+export type {
+  ExpiredRowsReaperDeps,
+  ExpiredRowsReaperResult,
+} from './jobs/expired-rows-reaper.js';
 export type {
   AgentJobKind,
   AgentJobRow,
