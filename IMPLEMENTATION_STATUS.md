@@ -103,7 +103,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - [x] `src/jobs/audit-verifier.ts` — daily-partition hash-chain integrity check via `verifyChain`; pages onAlert with `audit_hash_chain_break` + first break id/ts §6.4.1
 - [x] `src/jobs/outbox-flusher.ts` — drains `agent_audit_outbox` with retry budget; flags rows past `max_attempts` as `audit_outbox_stuck` for SREs §6.4.2
 - [x] `scripts/dr-drill.sh` — quarterly DR drill: sample-prod-revoked → spot-check sandbox → assert audit chain present (§8.3.3)
-- [ ] Integration tests: tamper detection (RT-12), audit omission (RT-39), WORM suppression (RT-28) — covered by unit tests; testcontainers + LocalStack S3 lands with M8
+- [x] Integration tests: tamper detection (RT-12), audit omission (RT-39), WORM suppression (RT-28) — RT-12 in `audit-chain.int` (admin-role tamper of row_hash flips first_break_index); RT-39 in `audit-outbox.int` (failed PutObject → outbox → flusher drains); RT-28 in `audit-outbox.int` (Tier B event with failing WORM put now throws `ServiceUnavailableError(audit_unavailable)` per §6.4.2 — closes a real implementation gap where the writer was never failing closed)
 - [x] **Deliverable**: SOC 2 / GDPR-ready audit trail (in-DB chain + WORM mirror + outbox + verifier + DR drill)
 
 ## Milestone M8 — Admin CLI + supply chain (SPEC §11.2 M8)
@@ -146,8 +146,8 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - **Unit tests**: 274 passing across 37 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
-- **Integration**: 62 passing against real Postgres 16 + Redis 7
-  (testcontainers, ~65 s):
+- **Integration**: 64 passing against real Postgres 16 + Redis 7
+  (testcontainers, ~62 s):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
     fallback, invalid_secret rejection.
   - revoke.int (2): Tier B revoke writes log + bumps epoch + invalidates
@@ -192,9 +192,12 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
     (preserves fresh ones); reconcileAccountKeySets walks Postgres
     authoritative key list, SADDs missing entries, SREMs phantoms,
     excludes revoked keys.
-  - audit-outbox.int (2): RT-39 — failed PutObject enqueues outbox row;
+  - audit-outbox.int (4): RT-39 — failed PutObject enqueues outbox row;
     flushAuditOutbox drains it on next pass; row past max_attempts is
-    paged as 'audit_outbox_stuck' for ops.
+    paged as 'audit_outbox_stuck' for ops; RT-28 — Tier B event with
+    failing WORM put throws ServiceUnavailableError(audit_unavailable)
+    AND outbox row still inserted for retry; Tier A default behavior
+    is best-effort (returns outboxed without throwing).
   - webhook-replay.int (1): RT-6 / §2.2.5 — runWebhookReplay skips
     already-processed deliveries, wrong event types, 2xx-acked, and
     older-than-lookback; triggers redelivery only for the rest;

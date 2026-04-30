@@ -13,6 +13,7 @@
  * audit-log entries that never reached WORM.
  */
 
+import { ServiceUnavailableError } from '../errors.js';
 import { defaultScrubber, type CompiledScrubber } from '../observability/scrubber.js';
 import type { PostgresAdapter } from '../storage/postgres-adapter.js';
 
@@ -52,6 +53,14 @@ export interface AuditWormEvent {
   readonly meta?: Record<string, unknown> | null;
   readonly row_hash: string; // hex
   readonly prev_hash: string; // hex
+  /**
+   * §6.4.2 / RT-28: when a Tier B event hits the outbox (i.e., the WORM
+   * put failed), the caller must fail-closed with 503 audit_unavailable
+   * so an attacker who suppresses S3 cannot get a free pass to revoke /
+   * rotate / suspend without a durable WORM record. Tier A is best-effort.
+   * Default: 'A'.
+   */
+  readonly tier?: 'A' | 'B';
 }
 
 export async function writeAuditToWorm(
@@ -101,6 +110,16 @@ export async function writeAuditToWorm(
         [event.id, bodyJson, error_msg.slice(0, 500)],
       )
       .catch(() => undefined);
+    // §6.4.2 / RT-28: Tier B events MUST fail-closed when they cannot reach
+    // WORM. The outbox row stays for retry — but the caller is told the
+    // operation is not durably audited so it can return 503 to the client
+    // and avoid silent suppression of revoke/rotate evidence.
+    if (event.tier === 'B') {
+      throw new ServiceUnavailableError(
+        'audit_unavailable',
+        `worm_put_failed: ${error_msg}`,
+      );
+    }
     return { status: 'outboxed', key, error: error_msg };
   }
 }
