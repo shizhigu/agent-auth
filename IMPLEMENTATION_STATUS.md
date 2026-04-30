@@ -49,8 +49,8 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Milestone M3 — Rotation + Revocation + Idempotency (SPEC §11.2 M3)
 
-- [ ] `src/routes/rotate-key.ts` — planned grace + emergency §2.7
-- [ ] `src/routes/revoke.ts` §2.8
+- [x] `src/routes/rotate-key.ts` — planned (Tier A, grace seconds → rotating + grace_expires_at) and emergency (Tier B inside `tierBIdempotent`, grace=0 → revoked); calls `issueNewKey` for the successor; `bumpEpochInTx` (rotating is auth-relevant); optional sealed-box delivery via `client_pubkey_b64` §2.7
+- [x] `src/routes/revoke.ts` — Tier B inside `tierBIdempotent`; bumps epoch + appends revocation_log + updates per-key `last_revoke_lsn`; post-commit barrier capture + `invalidateKey`; scope check (`self:revoke` for own key, `admin:keys` for others on same account); 404 anti-enumeration §2.8
 - [x] `src/distributed/revocation-epoch.ts` — `bumpEpochInTx(client, redis)` advances Postgres singleton + pushes via Redis Lua MAX §5.3.2
 - [x] `src/distributed/revocation-barrier.ts` — `captureBarrierAfterCommit` reads `pg_current_wal_insert_lsn()` + advances barrier; `readAuthoritativeBarrier` for secondary regions §4.4.2
 - [x] `src/distributed/tier-b-commit.ts` — `tierBCommit` race + Postgres XX098 detection; `tierBTransaction` sets `synchronous_commit='remote_apply'` §4.3
