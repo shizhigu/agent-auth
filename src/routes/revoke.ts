@@ -20,6 +20,7 @@ import {
   captureBarrierAfterCommit,
 } from '../distributed/revocation-barrier.js';
 import { invalidateKey } from '../distributed/cache-invalidation.js';
+import { writeAuditRowOnClient } from '../audit/db-writer.js';
 import type { PostgresAdapter } from '../storage/postgres-adapter.js';
 import type { RedisAdapter } from '../storage/redis-adapter.js';
 import type { AgentContext } from '../types.js';
@@ -160,6 +161,23 @@ export async function revoke(
         `UPDATE agent_api_keys SET last_revoke_lsn = $2::pg_lsn WHERE id = $1`,
         [row.id, commit_lsn],
       );
+
+      // SPEC §6.4 — emit audit row in the SAME txn so durability tracks
+      // the mutation atomically. Scrubber strips any high-entropy fields
+      // from `meta` before INSERT (RT-44).
+      await writeAuditRowOnClient(client, {
+        event_type: 'revoke',
+        endpoint: '/api/agent-auth/revoke',
+        status_class: 2,
+        account_id: row.account_id,
+        key_id: row.key_id,
+        meta: {
+          revoked_by_key_id: deps.caller.key_id,
+          reason: parsed.data.reason ?? null,
+          commit_lsn,
+          epoch,
+        },
+      });
 
       return {
         status: 200,

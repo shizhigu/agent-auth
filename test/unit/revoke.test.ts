@@ -43,6 +43,12 @@ class FakeDb {
     epoch: number;
     reason: string | null;
   }> = [];
+  audit_log: Array<{
+    event_type: string;
+    account_id: string | null;
+    key_id: string | null;
+    meta: Record<string, unknown> | null;
+  }> = [];
 
   async query<R>(text: string, params: ReadonlyArray<unknown> = []) {
     return runQuery<R>(this, text, params);
@@ -151,6 +157,28 @@ function runQuery<R>(
       reason: (params[4] as string | null) ?? null,
     });
     return { rows: [], rowCount: 1 };
+  }
+  // audit_log insert (writeAuditRowOnClient) — return a fake row so the
+  // helper's RETURNING clause is satisfied. Real schema invariants are
+  // covered by integration tests against the live trigger.
+  if (/INSERT INTO agent_audit_log/.test(text)) {
+    db.audit_log.push({
+      event_type: params[4] as string,
+      account_id: (params[1] as string) ?? null,
+      key_id: (params[2] as string) ?? null,
+      meta: params[11] ? JSON.parse(params[11] as string) : null,
+    });
+    return {
+      rows: [
+        {
+          id: String(db.audit_log.length),
+          ts: new Date(),
+          row_hash: Buffer.alloc(32),
+          prev_hash: Buffer.alloc(32),
+        },
+      ] as unknown as R[],
+      rowCount: 1,
+    };
   }
   // SET LOCAL synchronous_commit
   if (/SET LOCAL synchronous_commit/.test(text)) {

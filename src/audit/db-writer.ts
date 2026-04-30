@@ -10,6 +10,7 @@
  * the trigger never sees secrets / high-entropy tokens / oversize JSONB.
  */
 
+import type { PoolClient } from 'pg';
 import { defaultScrubber, type CompiledScrubber } from '../observability/scrubber.js';
 import type { PostgresAdapter } from '../storage/postgres-adapter.js';
 
@@ -79,6 +80,54 @@ export async function writeAuditRow(
       meta_scrubbed !== null ? JSON.stringify(meta_scrubbed) : null,
     ],
   );
+  if (!row) throw new Error('audit_insert_returned_no_row');
+  return {
+    id: String(row.id),
+    ts: row.ts,
+    row_hash: Buffer.isBuffer(row.row_hash) ? row.row_hash : Buffer.from(row.row_hash),
+    prev_hash: Buffer.isBuffer(row.prev_hash) ? row.prev_hash : Buffer.from(row.prev_hash),
+  };
+}
+
+/**
+ * In-transaction audit writer. Use this from inside a `tierBIdempotent`
+ * or `transaction()` callback so the audit row commits atomically with
+ * the mutation it records. Mirrors `writeAuditRow` but takes a `PoolClient`
+ * directly. Per SPEC §6.4 — every Tier B mutation MUST emit an audit
+ * row in the same transaction as the state change.
+ */
+export async function writeAuditRowOnClient(
+  client: PoolClient,
+  input: AuditWriteInput,
+  scrubber: CompiledScrubber = defaultScrubber,
+): Promise<AuditWriteResult> {
+  const meta_scrubbed =
+    input.meta !== undefined
+      ? (scrubber.scrub(input.meta) as Record<string, unknown>)
+      : null;
+  const res = await client.query<AuditWriteResult>(
+    `INSERT INTO agent_audit_log
+       (ts, account_id, key_id, identity_id, event_type, endpoint,
+        ip_hash, asn, user_agent, status_class, cost_units, meta)
+     VALUES (COALESCE($1, now()), $2, $3, $4, $5, $6,
+             $7, $8, $9, $10, $11, $12)
+     RETURNING id::text AS id, ts, row_hash, prev_hash`,
+    [
+      input.ts ?? null,
+      input.account_id ?? null,
+      input.key_id ?? null,
+      input.identity_id ?? null,
+      input.event_type,
+      input.endpoint ?? null,
+      input.ip_hash ?? null,
+      input.asn ?? null,
+      input.user_agent ?? null,
+      input.status_class ?? null,
+      input.cost_units ?? 1,
+      meta_scrubbed !== null ? JSON.stringify(meta_scrubbed) : null,
+    ],
+  );
+  const row = res.rows[0];
   if (!row) throw new Error('audit_insert_returned_no_row');
   return {
     id: String(row.id),

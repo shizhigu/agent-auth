@@ -125,6 +125,21 @@ describe('integration: revoke (SPEC §2.8 / RT-26)', () => {
     );
     expect(log?.kind).toBe('key_revoke');
 
+    // SPEC §6.4 — audit row written in the SAME txn as the mutation.
+    const audit = await fix.postgres.queryOne<{
+      event_type: string;
+      key_id: string;
+      account_id: string;
+    }>(
+      `SELECT event_type, key_id, account_id::text AS account_id
+         FROM agent_audit_log
+        WHERE event_type = 'revoke' AND key_id = $1
+        ORDER BY id DESC LIMIT 1`,
+      [key_id],
+    );
+    expect(audit?.event_type).toBe('revoke');
+    expect(audit?.account_id).toBe(account_id);
+
     const epochAfter = await fix.redis.getAuthoritativeEpoch();
     expect(epochAfter).toBeGreaterThan(epochBefore);
 
