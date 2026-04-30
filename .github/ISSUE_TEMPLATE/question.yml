@@ -1,0 +1,47 @@
+name: Question or proposal
+description: Discuss design, API surface, or a small change before opening a PR.
+title: "[discuss] "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This project is maintained by one person and not actively soliciting
+        feature PRs. **Please open a discussion here first** so we can agree
+        on the approach before you spend time on code — see the
+        [Contributing](https://github.com/shizhigu/agent-auth#contributing)
+        section of the README for context.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What are you trying to do, and what does the spec / current code say?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What would you change, and why? Include the SPEC.md section it would touch (an ADR may be required).
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else did you look at? Why is this better?
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I have read the Contributing section and understand feature PRs are not actively solicited.
+          required: true
+        - label: I am willing to discuss the approach before writing code.
+          required: true

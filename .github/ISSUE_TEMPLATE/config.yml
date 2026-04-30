@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security advisory (private)
+    url: https://github.com/shizhigu/agent-auth/security/advisories/new
+    about: For security findings, please open a private advisory instead of a public issue. See SECURITY.md for the policy.
+  - name: Documentation
+    url: https://github.com/shizhigu/agent-auth#documentation
+    about: SPEC, runbooks, OWASP self-review, migration guide, examples — most usage questions are answered here.

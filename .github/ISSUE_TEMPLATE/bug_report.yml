@@ -1,0 +1,88 @@
+name: Bug report
+description: Something behaves differently from what SPEC.md documents.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report.
+
+        **Security issues** — please do NOT file a public bug. Open a
+        private security advisory via the link in the issue chooser, or
+        follow the steps in `SECURITY.md`.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: "`git rev-parse HEAD` if you're on a checkout, or the npm version once published."
+      placeholder: "e.g., commit fd4fe2b or v0.1.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which subsystem does this touch?
+      options:
+        - Validation / middleware (req.agent)
+        - Registration / GitHub OAuth flow
+        - Rotation / revocation
+        - Idempotency / Tier B durability
+        - Audit chain / WORM mirror
+        - Multi-region failover
+        - Rate limiting (GCRA)
+        - Webhooks / replay
+        - Recovery flow (owner approval)
+        - Admin CLI / runbooks
+        - Schema / migrations
+        - Observability (logging / metrics)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What does SPEC.md say should happen? Cite the section if you can (e.g., §4.3, §6.4.1).
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened? Include error codes, stack traces, log lines.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal repro is ideal — config snippet, request shape, and the failing assertion.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: "Node version, Postgres / Redis versions if relevant, framework (Express / Hono / other)."
+      render: shell
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I have read SECURITY.md and confirm this is not a security finding (those go via private advisory).
+          required: true
+        - label: I have searched existing issues to confirm this is not a duplicate.
+          required: true
