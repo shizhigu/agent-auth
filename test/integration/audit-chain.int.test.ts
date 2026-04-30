@@ -12,9 +12,10 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { provisionFixture, type IntegrationFixture } from './setup.js';
-import { writeAuditRow } from '../../src/audit/db-writer.js';
+import { writeAuditRow, writeAuditRowOnClient } from '../../src/audit/db-writer.js';
 import { verifyAuditChain } from '../../src/jobs/audit-verifier.js';
 import { PostgresAdapter } from '../../src/storage/postgres-adapter.js';
+import { ZERO_HASH } from '../../src/crypto/audit-hash.js';
 
 describe('integration: audit hash chain (SPEC §6.4.1 / RT-12)', () => {
   let fix: IntegrationFixture;
@@ -135,5 +136,49 @@ describe('integration: audit hash chain (SPEC §6.4.1 / RT-12)', () => {
     expect(alerts).toHaveLength(1);
     expect(alerts[0]!.label).toBe('audit_hash_chain_break');
     expect(alerts[0]!.meta).toMatchObject({ at_id: expect.any(String) });
+  });
+
+  it('chain seed aligns to UTC even when session TIMEZONE is non-UTC (SPEC §3.8 / RT-12)', async () => {
+    // 23:50Z and 00:30Z+1 — same UTC-day boundary, but in LA (UTC-8 in
+    // December) both fall within the same local day. Without the 0005
+    // fix the trigger uses session-local date_trunc and chains them
+    // together, producing a non-ZERO prev_hash on the first row of the
+    // new UTC day. The UTC-scoped verifier seeds with ZERO_HASH and
+    // would surface a false break.
+    const D1 = new Date('2027-01-15T23:50:00Z');
+    const D2 = new Date('2027-01-16T00:30:00Z');
+    await fix.postgres.withClient(async (client) => {
+      await client.query("SET TIME ZONE 'America/Los_Angeles'");
+      await writeAuditRowOnClient(client, {
+        event_type: 'utc_align_d1',
+        status_class: 2,
+        ts: D1,
+      });
+      await writeAuditRowOnClient(client, {
+        event_type: 'utc_align_d2',
+        status_class: 2,
+        ts: D2,
+      });
+    });
+
+    // Confirm prev_hash of the first D2 row really is ZERO_HASH —
+    // i.e. the trigger correctly treated D2 as a fresh UTC day.
+    const d2_first = await adminPg.queryOne<{ prev_hash: Buffer }>(
+      `SELECT prev_hash FROM agent_audit_log
+        WHERE event_type = 'utc_align_d2'
+        ORDER BY id ASC LIMIT 1`,
+    );
+    expect(d2_first).toBeDefined();
+    const got = Buffer.isBuffer(d2_first!.prev_hash)
+      ? d2_first!.prev_hash
+      : Buffer.from(d2_first!.prev_hash);
+    expect(got.equals(ZERO_HASH)).toBe(true);
+
+    // And the verifier sees an intact chain on the D2 UTC day.
+    const out = await verifyAuditChain({
+      postgres: adminPg,
+      target_day: D2,
+    });
+    expect(out.first_break_index).toBe(-1);
   });
 });

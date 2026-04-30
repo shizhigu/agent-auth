@@ -151,7 +151,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - **Unit tests**: 320 passing across 43 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
-- **Integration**: 82 passing against real Postgres 16 + Redis 7
+- **Integration**: 83 passing against real Postgres 16 + Redis 7
   (testcontainers, ~80 s — healthz unhealthy-path waits ioredis retries):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
     fallback, invalid_secret rejection.
@@ -171,11 +171,13 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
   - rotation.int (2): planned rotation transitions old → 'rotating' with
     grace + creates new active key; concurrent rotation race resolves via
     §3.5 unique_violation trigger.
-  - audit-chain.int (3): hash chain intact for sequence of writeAuditRow
+  - audit-chain.int (4): hash chain intact for sequence of writeAuditRow
     calls; admin-role tamper of a row_hash flips first_break_index ≥ 0
     and pages oncall; cross-UTC-day independence — verifier with
     target_day=D treats each day's chain as ZERO_HASH-seeded, so a chain
-    spanning two days verifies as two independent intact chains.
+    spanning two days verifies as two independent intact chains; UTC
+    alignment under non-UTC session TIMEZONE — confirms 0005 trigger
+    fix uses UTC for the per-day chain seed regardless of session TZ.
   - idempotency.int (5): tierBIdempotent end-to-end (pending →
     completed atomically); replay returns cached without re-running op;
     RT-27 payload-mismatch → 409; §3.13 trigger refuses pending →
@@ -375,3 +377,18 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
      Fix filters by ioredis's first arg (matched pattern) inside
      the listener. Integration test against real Redis confirms
      each callback receives only its own pattern's messages.
+  17. **§3.8 audit chain TZ misalignment** — the
+     `compute_audit_row_hash` trigger used
+     `date_trunc('day', NEW.ts)` for the per-day chain seed.
+     `date_trunc/2` respects the SESSION timezone, not UTC. The
+     daily partition manager (UTC-bound) and the hourly verifier
+     (UTC-scoped) disagreed with the trigger if a SaaS team's
+     Postgres session was non-UTC: rows on either side of UTC
+     midnight would chain together (because they fell in the
+     same local day), and the verifier seeding with ZERO_HASH
+     for the new UTC day would surface a false break at the
+     start of every UTC day. Migration `0005_audit_chain_utc.sql`
+     adds explicit `'UTC'` arg to `date_trunc` (PG14+ form).
+     Regression integration test in `audit-chain.int.test.ts`
+     (with `SET TIME ZONE 'America/Los_Angeles'`) fails before
+     the migration and passes after.
