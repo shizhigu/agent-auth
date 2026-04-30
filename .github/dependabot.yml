@@ -4,11 +4,49 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
     open-pull-requests-limit: 5
     # Manual review required for any new transitive dep per RT-35.
     reviewers:
       - shizhigu
+    # One PR per ecosystem instead of one-per-package — less spam.
+    groups:
+      production-deps:
+        applies-to: version-updates
+        dependency-type: production
+        update-types: [minor, patch]
+      dev-deps:
+        applies-to: version-updates
+        dependency-type: development
+        update-types: [minor, patch]
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
+    # Major-version bumps come as individual PRs so they can be
+    # reviewed in isolation. Pin known-fragile boundaries explicitly.
+    ignore:
+      # TypeScript 6 doesn't exist as a stable release; dependabot's
+      # tracking the wrong feed. Re-enable when TS 6 ships.
+      - dependency-name: "typescript"
+        update-types: [version-update:semver-major]
+      # typescript-eslint v8 is a coordinated breaking change requiring
+      # the strict-type-checked migration. Handle manually.
+      - dependency-name: "@typescript-eslint/*"
+        update-types: [version-update:semver-major]
+      # @octokit/auth-app v8 is a major rewrite; coordinate manually.
+      - dependency-name: "@octokit/auth-app"
+        update-types: [version-update:semver-major]
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        patterns: ["*"]
+        update-types: [minor, patch]

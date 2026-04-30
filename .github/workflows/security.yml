@@ -8,8 +8,14 @@ on:
 permissions:
   contents: read
   security-events: write
+  id-token: write   # Scorecard publishes signed results via Sigstore.
 jobs:
+  # Scorecard analyzes repo-level metadata (branch protection, signed
+  # tags, perms hygiene, etc.) — nothing PR-specific. Running on PRs
+  # from forks (incl. dependabot) fails by design because the fork
+  # token can't write to security-events. Restrict to push + cron.
   scorecard:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,3 +51,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions/dependency-review-action@v4
+        with:
+          # Block merges that introduce moderate+ vulns or copyleft licenses.
+          fail-on-severity: moderate
+          deny-licenses: AGPL-3.0, GPL-2.0, GPL-3.0
