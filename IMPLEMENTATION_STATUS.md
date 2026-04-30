@@ -146,8 +146,8 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 - **Unit tests**: 274 passing across 37 suites, ~930 ms wall (includes
   fast-check property tests + AwsKmsAdapter + AwsS3WormPutter via
   aws-sdk-client-mock + down-migration structural invariants).
-- **Integration**: 46 passing against real Postgres 16 + Redis 7
-  (testcontainers, ~50 s):
+- **Integration**: 51 passing against real Postgres 16 + Redis 7
+  (testcontainers, ~57 s):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
     fallback, invalid_secret rejection.
   - revoke.int (2): Tier B revoke writes log + bumps epoch + invalidates
@@ -212,6 +212,12 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
     revoked + epoch bumped + revocation_log appended; two-person
     flush-cache rejected without co-signer, succeeds with valid
     co-signer signature.
+  - express-middleware.int (5): full HTTP round-trip against real DB
+    via fetch — 200 happy path with req.agent + X-Request-Id echo;
+    inbound X-Request-Id preserved verbatim; 401 invalid_key (no header)
+    with documentation_url; 401 invalid_secret (tampered secret);
+    403 insufficient_scope from route-thrown require_scope routed
+    through SaaS error handler.
 - **Chaos**: 14 passing (~10 s):
   - redis-partition (2): RT-25 healthy + partitioned-Redis no-false-accept
     invariant via testcontainers stop().

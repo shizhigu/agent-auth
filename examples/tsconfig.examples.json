@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "paths": {
+      "agent-auth": ["../src/index.ts"],
+      "agent-auth/identity/github-app/browser-flow.js": [
+        "../src/identity/github-app/browser-flow.ts"
+      ]
+    }
+  },
+  "include": ["./*.ts"]
+}
