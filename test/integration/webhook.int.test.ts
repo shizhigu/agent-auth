@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { createHmac, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomUUID } from 'node:crypto';
 import {
   provisionFixture,
   type IntegrationFixture,
@@ -371,5 +371,82 @@ describe('integration: webhook (SPEC §2.2.4 / RT-6 / RT-30)', () => {
     );
     // Verify-before-dedup: no row inserted on HMAC failure.
     expect(after?.count).toBe(before?.count);
+  });
+
+  it('redelivery of a previously-FAILED row re-processes the actions (status: failed → processed)', async () => {
+    // Plant a fresh identity + key so the cascade has something to do.
+    const acc = await fix.postgres.queryOne<{ id: string }>(
+      `INSERT INTO agent_accounts (display_handle, tier, status)
+         VALUES ('hook-retry', 'cold', 'active') RETURNING id`,
+    );
+    const ident = await fix.postgres.queryOne<{ id: string }>(
+      `INSERT INTO agent_identities
+         (account_id, provider, subject, audience, issuer, assurance_level,
+          display_handle, is_primary, status)
+         VALUES ($1, 'github_app', '88888', 'Iv1.int', 'github.com', 'medium',
+                 'hook-retry-octo', true, 'active') RETURNING id`,
+      [acc!.id],
+    );
+    await fix.postgres.query(
+      `INSERT INTO agent_api_keys
+         (account_id, issued_via_identity_id, key_id, key_hash, key_pepper_version,
+          prefix, scopes, tier, version, rotation_state)
+       VALUES ($1, $2, 'agk_retry', $3, 1, 'retryret', '{"read"}', 'cold', 1, 'active')`,
+      [acc!.id, ident!.id, Buffer.alloc(32, 5)],
+    );
+
+    const body = Buffer.from(
+      JSON.stringify({ action: 'revoked', sender: { id: 88888, login: 'hook-retry-octo' } }),
+      'utf8',
+    );
+    const sig = ghSig(body);
+    const delivery = randomUUID();
+
+    // Plant a webhook_events row in 'failed' status — simulates a prior
+    // attempt that errored (e.g., transient DB blip). The replay job /
+    // GitHub redelivery should NOT short-circuit to 'duplicate'; the
+    // actions need to actually run.
+    // The route's payload_hash is SHA-256 of raw_body; match that exactly
+    // so the body-mismatch alert path doesn't trigger.
+    const real_hash = createHash('sha256').update(body).digest();
+    await fix.postgres.query(
+      `INSERT INTO agent_webhook_events
+         (id, provider, event_type, payload_hash, status, error)
+       VALUES ($1::uuid, 'github_app', 'github_app_authorization', $2, 'failed', 'simulated_blip')`,
+      [delivery, real_hash],
+    );
+
+    const out = await handleWebhookRequest(
+      {
+        provider: 'github_app',
+        headers: {
+          'x-hub-signature-256': sig,
+          'x-github-event': 'github_app_authorization',
+          'x-github-delivery': delivery,
+        },
+        raw_body: body,
+      },
+      {
+        postgres: fix.postgres,
+        redis: fix.redis,
+        identity_providers: [provider],
+        region: 'us-east-1',
+      },
+    );
+
+    // Re-processed (NOT 'duplicate'): identity revoked + key cascaded.
+    expect(out.status).toBe('processed');
+    expect(out.invalidated_keys).toContain('agk_retry');
+    const idRow = await fix.postgres.queryOne<{ status: string }>(
+      `SELECT status FROM agent_identities WHERE id = $1`,
+      [ident!.id],
+    );
+    expect(idRow?.status).toBe('revoked');
+    // The webhook_events row's status flipped to 'processed'.
+    const evt = await fix.postgres.queryOne<{ status: string }>(
+      `SELECT status FROM agent_webhook_events WHERE id = $1::uuid`,
+      [delivery],
+    );
+    expect(evt?.status).toBe('processed');
   });
 });

@@ -119,9 +119,36 @@ export async function handleWebhookRequest(
           delivery_id: parsed.event_id,
           provider: provider.name,
         });
+        // Body mismatch: existing record wins (per SPEC §2.2.4 step 5).
+        return { status: 'duplicate', invalidated_keys: [] };
       }
+      // Same body — what's the status?
+      //
+      //   processed → genuine replay; idempotent no-op.
+      //   ignored   → defensive (current code only writes 'processed'/'failed',
+      //               but tolerate the value if it ever appears).
+      //   received  → another handler is actively processing this delivery
+      //               right now. Treat as duplicate to avoid double-running
+      //               actions; if the original handler crashed mid-process
+      //               the row will remain 'received' and an operator can
+      //               clear it via the admin CLI (or it'll get retried
+      //               after the next webhook-replay run flips it to a fresh
+      //               redelivery, which arrives with a new delivery id).
+      //   failed    → previous attempt errored. webhook-replay redelivers
+      //               for exactly this case; without re-running here the
+      //               redelivery would be a no-op forever. Fall through to
+      //               re-process the actions.
+      if (existing.status !== 'failed') {
+        return { status: 'duplicate', invalidated_keys: [] };
+      }
+      // Otherwise: fall through and re-run the actions; the trailing
+      // UPDATE flips status from 'failed' → 'processed' (or back to
+      // 'failed' if the retry also fails).
+    } else {
+      // Race: ON CONFLICT fired but the row doesn't exist on re-fetch.
+      // Postgres pre-13 quirk; treat as duplicate defensively.
+      return { status: 'duplicate', invalidated_keys: [] };
     }
-    return { status: 'duplicate', invalidated_keys: [] };
   }
 
   // Step 4: apply actions in a single transaction.
