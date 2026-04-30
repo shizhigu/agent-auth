@@ -19,8 +19,11 @@ jobs:
       - name: install
         run: npm ci
       - name: typecheck
-        run: npx tsc --noEmit
+        # Includes examples (per `npm run typecheck`).
+        run: npm run typecheck
       - name: lint
         run: npm run lint
       - name: unit tests
         run: npm test
+      - name: build (catch dist-only regressions)
+        run: npm run build
