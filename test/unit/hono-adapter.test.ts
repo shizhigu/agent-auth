@@ -94,7 +94,7 @@ describe('honoMiddleware', () => {
     ({ deps, presented } = await buildDeps());
   });
 
-  it('happy path: c.get("agent") is the AgentContext', async () => {
+  it('happy path: c.get("agent") is the AgentContext; X-Request-Id echoed (SPEC §10.5)', async () => {
     const app = new Hono();
     app.use('/protected', honoMiddleware(deps));
     app.get('/protected', (c) => {
@@ -107,6 +107,22 @@ describe('honoMiddleware', () => {
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ account_id: 'acc-h' });
+    expect(res.headers.get('x-request-id')).toBeTruthy();
+  });
+
+  it('inbound X-Request-Id is preserved verbatim on success (SPEC §10.5)', async () => {
+    const app = new Hono();
+    app.use('/protected', honoMiddleware(deps));
+    app.get('/protected', (c) => c.json({ ok: true }));
+    const reqId = 'req-hono-12345';
+    const res = await app.request('/protected', {
+      headers: {
+        authorization: `Bearer ${presented}`,
+        'x-request-id': reqId,
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-request-id')).toBe(reqId);
   });
 
   it('returns 401 invalid_key when bearer is missing', async () => {

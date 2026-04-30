@@ -27,6 +27,9 @@ export interface HonoLikeContext {
   set(key: 'agent', value: AgentContext): void;
   set(key: string, value: unknown): void;
   json(body: unknown, status?: number, headers?: Record<string, string>): Response;
+  /** Hono v4 — sets a header on the outgoing response. Used to echo
+   *  X-Request-Id on the success path per SPEC §10.5. */
+  header(name: string, value: string): void;
 }
 type Next = () => Promise<void>;
 
@@ -67,14 +70,15 @@ export function honoMiddleware(
       const ctx = await validateKey(presented, deps);
       c.set('agent', ctx);
       options.onAccept?.(ctx, request_id);
-      const out = await next();
-      // Echo X-Request-Id even on the success response. Hono's Response is
-      // produced inside route handlers; we wrap to attach the header.
-      // If `next()` produced a Response (Hono returns from middleware
-      // chain), it is on its own — handlers that need the header should
-      // set it themselves. We keep this contract minimal to match Hono's
-      // middleware idiom.
-      return out as Response | undefined;
+      await next();
+      // SPEC §10.5: every authenticated response MUST carry X-Request-Id.
+      // Hono v4's `c.header(name, value)` mutates the outgoing response
+      // headers regardless of whether the route handler set them. Set
+      // AFTER next() so a downstream handler that explicitly overrode
+      // the header still wins (defensive: it shouldn't, but if a SaaS
+      // app does, we don't clobber).
+      c.header('X-Request-Id', request_id);
+      return;
     } catch (err) {
       const e = isAgentAuthError(err)
         ? err
