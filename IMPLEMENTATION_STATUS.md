@@ -162,6 +162,13 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
   - audit-chain.int (2): hash chain intact for sequence of writeAuditRow
     calls; admin-role tamper of a row_hash flips first_break_index ≥ 0
     and pages oncall.
+  - idempotency.int (5): tierBIdempotent end-to-end (pending →
+    completed atomically); replay returns cached without re-running op;
+    RT-27 payload-mismatch → 409; §3.13 trigger refuses pending →
+    manual_required for app role; admin override allowed AND emits
+    idempotency_admin_override audit event in the same txn; §3.13
+    terminal-row immutability — request_hash cannot be UPDATEd after
+    completed (errcode 23514).
 - **Chaos**: 2 passing (~4 s) — RT-25 healthy + partitioned-Redis
   no-false-accept invariant via testcontainers stop().
 - **Bench**: validation_cache_hit P50/P99 = 2.5 µs / 4.3 µs;

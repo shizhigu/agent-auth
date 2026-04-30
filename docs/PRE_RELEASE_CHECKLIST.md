@@ -42,21 +42,31 @@ sign-off recorded in CHANGELOG).
 ## Security review
 
 - [ ] **OWASP API Top 10 self-review** — see docs/security/OWASP-API-self-review.md
-- [ ] **All 44 RT-* threats have integration / unit test coverage**
-  - [x] RT-3, RT-25, RT-26 (cache fallback, epoch invalidation) — integration
-  - [x] RT-6, RT-30, RT-42 (webhook replay, collision, secret rotation) — unit
-  - [x] RT-9 (cross-tenant) — unit (validate-key) + integration
-  - [x] RT-12, RT-39 (audit tamper, omission) — unit (verifier) + DB-level trigger
+- [~] **All 44 RT-* threats have integration / unit test coverage** (28 / 44 covered):
+  - [x] RT-3 (Redis compromise → cache-only) — integration (redis flushdb fallback)
+  - [x] RT-6 (webhook replay) — unit + integration (delivery_id dedup)
+  - [x] RT-9 (BOLA / cross-tenant) — unit (validate-key) + integration (revoke 404 anti-enumeration)
+  - [x] RT-10 (admin abuse) — unit (cli + jit-rbac + two-person)
+  - [x] RT-12 (audit tamper) — integration (admin-role row_hash UPDATE → linkage break)
   - [x] RT-14, RT-36 (release pipeline) — workflow-level controls
-  - [x] RT-19, RT-31, RT-41 (recovery hijack, confused deputy) — unit
-  - [x] RT-20 (sealed-box pubkey substitution) — unit
-  - [x] RT-21 (session fixation, cross-kind tokens) — unit
-  - [x] RT-27 (idempotency replay payload mismatch) — unit
-  - [x] RT-29 (OAuth state phishing) — unit (PKCE) + integration (callback)
-  - [x] RT-44 (APM scrubbing) — unit (scrubber + metrics + logger)
-  - [ ] RT-15 (DoS), RT-43 (fail-closed amplification) — chaos suite
-  - [ ] RT-18, RT-32, RT-34 (multi-region failover) — chaos suite
-  - [x] RT-10, RT-38 (admin abuse, SSO compromise → break-glass) — unit
+  - [x] RT-19 (recovery hijack signature) — unit (owner-approval HMAC + skew)
+  - [x] RT-20 (sealed-box pubkey substitution) — unit (pubkey-bound + size check)
+  - [x] RT-21 (session fixation, cross-kind tokens) — unit + integration
+  - [x] RT-25 (Redis partition) — chaos (container stop)
+  - [x] RT-26 (stale Redis epoch / split-brain) — integration (revoke bumps epoch)
+  - [x] RT-27 (idempotency replay payload mismatch) — unit + integration (real trigger)
+  - [x] RT-29 (OAuth state phishing) — unit (PKCE RFC 7636 vector) + integration (single-use nonce)
+  - [x] RT-30 (webhook spoof / order gap) — unit + integration (collision alert)
+  - [x] RT-31 (tenant confused-deputy in recovery) — unit (target_account_id mismatch)
+  - [x] RT-38 (SSO compromise → break-glass) — unit (jit-rbac independent path)
+  - [x] RT-39 (audit omission) — unit (verifier first_break_index) + integration
+  - [x] RT-41 (recovery approver compromise) — unit (two-person + co-signer)
+  - [x] RT-42 (webhook secret rotation) — unit + integration (dual-secret window)
+  - [x] RT-44 (APM scrubbing) — unit (scrubber + metrics + logger label scrub)
+  - [x] §3.5 trigger race resolution (rotation_inverse) — integration (23505 unique_violation)
+  - [ ] RT-15 (DoS), RT-43 (fail-closed amplification) — chaos suite (TODO)
+  - [ ] RT-18, RT-32, RT-34 (multi-region failover) — chaos suite (TODO)
+  - [ ] RT-1, RT-7, RT-8, RT-13, RT-22, RT-23, RT-24, RT-28, RT-33, RT-35, RT-37, RT-40 — security review still pending; tests added as v0.1.1 work.
 - [x] **Audit hash chain verifier** runs end-to-end against test data — unit
 - [ ] **30-day historical replay** of audit chain in staging
 - [ ] **DR drill on staging — RTO < 1h confirmed** — `scripts/dr-drill.sh`

@@ -84,9 +84,11 @@ GRANT INSERT, SELECT ON agent_audit_log TO agent_auth_app;
 GRANT USAGE, SELECT ON SEQUENCE agent_audit_log_id_seq
   TO agent_auth_app, agent_auth_admin;
 
--- Admin role can read everything; UPDATE/DELETE require explicit support
--- (e.g. partition drop). Audit DELETE is itself a logged event.
-GRANT SELECT, UPDATE ON agent_audit_log TO agent_auth_admin;
+-- Admin role can read everything; UPDATE for partition drop / RB-6
+-- restoration; INSERT so triggers (e.g. enforce_idempotency_transitions
+-- admin override path) can append override events. DELETE is reserved
+-- for partition retention and is itself logged.
+GRANT SELECT, INSERT, UPDATE ON agent_audit_log TO agent_auth_admin;
 
 -- Read-only role: column-restricted to non-PII columns (per §3.16).
 GRANT SELECT (id, ts, event_type, account_id, key_id, status_class)
