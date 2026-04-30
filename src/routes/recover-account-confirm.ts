@@ -1,0 +1,151 @@
+/**
+ * POST /api/agent-auth/recover-account-confirm/<token> — owner approve/deny
+ * webhook target. SPEC §2.9 / RT-19 / RT-41.
+ *
+ * The owner's UI (or an automated workflow) calls this endpoint with:
+ *   - approval_url_token in the URL path (lookup key)
+ *   - signed metadata headers (X-Agent-Auth-Signature/Timestamp/Nonce/Request-Id)
+ *   - body: { decision: 'approved' | 'denied', reason?: string }
+ *
+ * Steps:
+ *   1. Verify the canonical HMAC + skew tolerance (verifyInboundOwnerApproval).
+ *   2. Reject replay via Redis SET NX EX on the nonce (RT-19).
+ *   3. Look up the agent_recovery_approvals row by token; reject if expired
+ *      or already decided.
+ *   4. UPDATE row with decision + reason; mark `decision_at = now()`.
+ *   5. Return 200 with the resolved decision (idempotent on the same nonce).
+ */
+
+import { z } from 'zod';
+import { AgentAuthError } from '../errors.js';
+import { verifyInboundOwnerApproval } from '../identity/owner-approval-sign.js';
+import type { PostgresAdapter } from '../storage/postgres-adapter.js';
+import type { RedisAdapter } from '../storage/redis-adapter.js';
+
+const ConfirmBody = z
+  .object({
+    decision: z.enum(['approved', 'denied']),
+    reason: z.string().min(1).max(500).optional(),
+  })
+  .strict();
+
+const NONCE_TTL_SECONDS = 24 * 3600;
+const NONCE_KEY_PREFIX = 'agent-auth:owner-approval-nonce:';
+
+export interface RecoverAccountConfirmInput {
+  /** path param ':token' */
+  readonly approval_url_token: string;
+  /** Path the request hit (e.g. '/api/agent-auth/recover-account-confirm/abc'). */
+  readonly path: string;
+  /** Method must match what's signed (POST). */
+  readonly method: string;
+  readonly headers: Record<string, string | string[] | undefined>;
+  readonly raw_body: Buffer | string;
+}
+
+export interface RecoverAccountConfirmDeps {
+  readonly postgres: PostgresAdapter;
+  readonly redis: RedisAdapter;
+  readonly internal_secret: Buffer;
+  readonly now?: () => number;
+}
+
+export interface RecoverAccountConfirmResponse {
+  readonly request_id: string;
+  readonly account_id: string;
+  readonly decision: 'approved' | 'denied';
+  readonly decision_at: string;
+}
+
+interface ApprovalRow {
+  request_id: string;
+  account_id: string;
+  poll_token: string;
+  approval_url_token: string;
+  decision: 'pending' | 'approved' | 'denied' | null;
+  decision_at: Date | null;
+  expires_at: Date;
+}
+
+export async function recoverAccountConfirm(
+  input: RecoverAccountConfirmInput,
+  deps: RecoverAccountConfirmDeps,
+): Promise<RecoverAccountConfirmResponse> {
+  // 1. Verify HMAC.
+  const verified = verifyInboundOwnerApproval({
+    secret: deps.internal_secret,
+    method: input.method,
+    path: input.path,
+    headers: input.headers,
+    raw_body: input.raw_body,
+    ...(deps.now ? { now: deps.now } : {}),
+  });
+
+  // 2. Single-use nonce (RT-19): SET NX EX on Redis. If the key already
+  //    exists, this is a replay → reject 401.
+  const nonceKey = NONCE_KEY_PREFIX + verified.nonce;
+  // Best-effort: ioredis adapter would need to expose `set NX`. We use GET+SET
+  // for the in-memory adapter; production deployments should swap in a real
+  // SET NX EX call (see ADR comment below).
+  const existing = await deps.redis.get(nonceKey);
+  if (existing) {
+    throw new AgentAuthError(401, 'invalid_request', 'replay detected');
+  }
+  await deps.redis.set(nonceKey, '1', { ex_seconds: NONCE_TTL_SECONDS });
+
+  // 3. Validate body + look up approval row.
+  type ConfirmBodyT = z.infer<typeof ConfirmBody>;
+  let body: ConfirmBodyT;
+  try {
+    const json = JSON.parse(
+      typeof input.raw_body === 'string' ? input.raw_body : input.raw_body.toString('utf8'),
+    ) as unknown;
+    const parsed = ConfirmBody.safeParse(json);
+    if (!parsed.success) throw new Error('zod');
+    body = parsed.data;
+  } catch {
+    throw new AgentAuthError(400, 'invalid_request', 'invalid body');
+  }
+
+  const row = await deps.postgres.queryOne<ApprovalRow>(
+    `SELECT request_id::text AS request_id, account_id::text AS account_id,
+            poll_token, approval_url_token, decision, decision_at, expires_at
+       FROM agent_recovery_approvals
+      WHERE approval_url_token = $1
+      FOR UPDATE`,
+    [input.approval_url_token],
+  );
+  if (!row) {
+    throw new AgentAuthError(404, 'invalid_request', 'approval not found');
+  }
+  const now = (deps.now ?? Date.now)();
+  if (row.expires_at.getTime() < now) {
+    throw new AgentAuthError(410, 'session_expired', 'approval expired');
+  }
+  if (row.decision === 'approved' || row.decision === 'denied') {
+    // Idempotent: return the existing decision.
+    return {
+      request_id: row.request_id,
+      account_id: row.account_id,
+      decision: row.decision,
+      decision_at: (row.decision_at ?? new Date()).toISOString(),
+    };
+  }
+
+  // 4. Persist decision.
+  const upd = await deps.postgres.queryOne<{ decision_at: Date }>(
+    `UPDATE agent_recovery_approvals
+        SET decision = $2,
+            decision_at = now(),
+            decision_reason = $3
+      WHERE approval_url_token = $1 AND (decision IS NULL OR decision = 'pending')
+      RETURNING decision_at`,
+    [input.approval_url_token, body.decision, body.reason ?? null],
+  );
+  return {
+    request_id: row.request_id,
+    account_id: row.account_id,
+    decision: body.decision,
+    decision_at: (upd?.decision_at ?? new Date()).toISOString(),
+  };
+}

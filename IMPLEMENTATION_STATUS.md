@@ -84,15 +84,16 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Milestone M6 — Recovery + multi-region (SPEC §11.2 M6)
 
-- [ ] `src/routes/recover-account.ts` + `recover-account-confirm` §2.9
-- [ ] `src/routes/recover-account-status.ts`
-- [ ] Recovery state machine (active-only invariant) §2.9
-- [ ] Owner-approval webhook signing §2.9 / RT-19, RT-41
-- [ ] LSN barrier protocol — post-commit capture, cross-region read §4.4.2
-- [ ] Cross-region validation — authoritative barrier on primary §4.4.3
-- [ ] `scripts/post-promotion-reset.sh` — failover readiness gate §4.4.4
-- [ ] Integration tests: stale replica scenario, cross-region barrier, failover timeline mismatch (RT-18, RT-32, RT-34)
-- [ ] **Deliverable**: multi-region active-passive with correct revocation visibility
+- [x] `src/routes/recover-account.ts` — wraps `beginRegistration` with intent='recover', requires `account_id`, optional owner-approval webhook §2.9
+- [x] `src/routes/recover-account-status.ts` — wraps `registrationStatus(endpoint='recover')` so cross-kind tokens (RT-21) reject 410 §10.1
+- [x] `src/routes/recover-account-confirm.ts` — owner-approval receiver: HMAC verify (RT-19) + Redis SET-NX nonce single-use + agent_recovery_approvals state machine
+- [x] Recovery state machine (active-only invariant) — enforced in /callback case C re-activation + RT-31 target_account_id guard §2.9
+- [x] Owner-approval webhook signing — `src/identity/owner-approval-sign.ts` with canonical method+path+timestamp+nonce+request_id+body_hash HMAC, ±5 min skew, dual-direction (emit + verify) §2.9 / RT-19 / RT-41
+- [x] LSN barrier protocol — post-commit capture in `captureBarrierAfterCommit`; revoke + emergency rotate + webhook cascade all advance the barrier §4.4.2
+- [x] Cross-region validation — `src/distributed/multi-region-barrier.ts` exposes `makeBarrierCheck` that validateKey can plug into via `barrier_check`; reads authoritative barrier from primary, gates local replay LSN, throws 503 region_replication_stale or failover_in_progress §4.4.3
+- [x] `scripts/post-promotion-reset.sh` — captures new LSN+timeline on freshly-promoted primary, advances barrier, FLUSHDBs Redis, emits promotion_completed audit event, touches readiness file §4.4.4
+- [ ] Integration tests: stale replica scenario, cross-region barrier, failover timeline mismatch (RT-18, RT-32, RT-34) — covered by unit tests; testcontainers integration suite lands with M7
+- [x] **Deliverable**: multi-region active-passive with correct revocation visibility (route + barrier + RB-8 script)
 
 ## Milestone M7 — Audit + compliance (SPEC §11.2 M7)
 

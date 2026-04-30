@@ -48,6 +48,11 @@ export interface ValidateKeyDeps {
   readonly redis_cache_ttl_seconds: number;
   /** Injectable clock for tests; defaults to Date.now */
   readonly now?: () => number;
+  /** Optional multi-region barrier check (§4.4.2). When set, validateKey
+   *  consults the authoritative barrier on the primary and rejects a
+   *  stale local replica with 503 region_replication_stale. Inert in
+   *  single-region deployments (caller leaves this undefined). */
+  readonly barrier_check?: () => Promise<void>;
 }
 
 /** Build the deps bundle from a ResolvedConfig. */
@@ -120,6 +125,14 @@ export async function validateKey(
 ): Promise<AgentContext> {
   const parsed = parseApiKey(presented);
   const now = deps.now ?? Date.now;
+
+  // 0. Multi-region barrier check (§4.4.2). When configured, this rejects
+  //    503 if the local replica is stale relative to the authoritative
+  //    revocation barrier on the primary. Single-region deployments leave
+  //    `barrier_check` undefined, so this is a no-op there.
+  if (deps.barrier_check) {
+    await deps.barrier_check();
+  }
 
   // 1. Authoritative epoch.
   const currentEpoch = await deps.redis.getAuthoritativeEpoch();
