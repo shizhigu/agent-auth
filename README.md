@@ -14,15 +14,36 @@
 [![Maintained by shizhigu](https://img.shields.io/badge/maintained%20by-shizhigu-blue)](https://github.com/shizhigu)
 [![Contributions: issues only](https://img.shields.io/badge/contributions-issues%20only-yellow)](#contributing)
 
+[Status](#project-status) ·
+[Why](#why-agent-auth) ·
+[Comparison](#comparison-vs-better-auth--auth0--clerk--nango) ·
 [Quick start](#quick-start) ·
 [How it works](#how-it-works) ·
-[Documentation](#documentation) ·
 [Architecture](#architecture) ·
-[Roadmap](#status)
+[Roadmap](#roadmap)
 
 </div>
 
 ---
+
+## Project status
+
+**Server-side library: feature-complete (v0.1).** All 8 milestones shipped — `355` unit · `94` integration · `14` chaos tests passing at HEAD. Spec audited across 13 rounds with codex / GPT-5; final grade A (production-ready paying-customer level).
+
+**What is NOT shipped yet** — and why this matters for you:
+
+| | Status | Plan |
+|---|---|---|
+| Published on npm | **No** — install today via `git clone && npm run build` | v0.2 |
+| Agent-side SDK (`@agent-auth/client`) | **No** — agents currently implement PKCE + sealed-box decrypt + bearer-key auto-rotation themselves | v0.2 |
+| CLI scaffolder (`npx create-agent-auth-app`) | **No** | v0.2 |
+| Reference end-to-end demo (SaaS + agent) | **No** — only SaaS-side examples | v0.2 |
+| Docs site (`agent-auth.dev`) | **No** — README + SPEC only | v0.2 |
+| Multi-provider identity (Google / GitLab / generic OIDC) | **No** — GitHub-only at v0.1 | v0.3 |
+| Migration runner (`agent-auth migrate up`) | **No** — apply `schema/migrations/*.sql` manually | v0.3 |
+| Hosted version (`agent-auth Cloud`) + admin dashboard | **No** — self-host only | v1.0 |
+
+If you want to **try it today**, see [Quick start](#quick-start). If you want to **build production on top of it**, the realistic ETA is **v0.2 (~4 weeks)** when DX completes — the server-side core is solid, but the rough edges are real.
 
 ## Why agent-auth
 
@@ -47,6 +68,41 @@ app.get('/api/agent/v1/data', (req, res) => {
 });
 ```
 
+## Comparison vs Better Auth / Auth0 / Clerk / Nango
+
+`agent-auth` is **complementary** to existing auth tools, not a competitor. It plugs a gap none of them cover today.
+
+### Quick map
+
+> - **Better Auth · Auth0 · Clerk · Lucia** → "humans log into your SaaS"
+> - **Nango · Arcade · Auth0 for AI Agents** → "your code calls third-party APIs (Slack, GDrive, …) on behalf of an authenticated human"
+> - **agent-auth (this)** → "AI agents register accounts on YOUR SaaS and get their own scoped API keys"
+>
+> If you're building Acme SaaS and want Claude Code / Cursor / Codex to autonomously sign up for an Acme account on a human's behalf and call the Acme API: **agent-auth fills that gap**. None of the others do.
+
+### Detailed table
+
+| | **Better Auth · Lucia** | **Auth0 · Clerk** | **Nango · Arcade · Auth0-for-AI-Agents** | **agent-auth (this)** |
+|---|---|---|---|---|
+| **Whose identity** | the human | the human | the human (token forwarded to 3rd-party APIs) | the agent itself |
+| **You are the…** | service humans log into | service humans log into | service that calls 3rd-party APIs | service the agent calls |
+| **Hosted option** | Better Auth Cloud | Yes (default) | Yes | No (self-host only at v0.1; Cloud is v1.0) |
+| **DB ownership** | your DB | their DB | your DB | your DB |
+| **Headless agent flow** | n/a | n/a | partial (token broker) | designed for it (PKCE + sealed-box) |
+| **API key issuance** | session cookies primarily | sessions / JWT / API keys | n/a | API keys (scoped, rotatable, instantly revocable) |
+| **Audit chain (cryptographic)** | basic logs | yes (paid) | basic logs | append-only hash chain + WORM mirror |
+| **Multi-tenant by default** | yes | yes | yes | yes (`req.agent.account_id` enforced) |
+| **Self-hostable** | yes | no | yes (some) | yes (only mode at v0.1) |
+| **Supply-chain hardening** | varies | n/a | varies | OIDC publish + Sigstore + SBOM + Scorecard |
+
+### What agent-auth is NOT
+
+- Not a replacement for Clerk / Auth0 / Better Auth — those handle **human** auth.
+- Not browser automation — Browserbase / Skyvern occupy that space.
+- Not an agent governance / observability platform.
+- Not a token vault for already-authorized SaaS APIs.
+- Not a marketplace or payment rail for agents.
+
 ## Features
 
 - **Drop-in middleware** for Express, Hono, and any framework via the framework-agnostic core. Adapters take 5 lines each.
@@ -63,14 +119,41 @@ app.get('/api/agent/v1/data', (req, res) => {
 
 ## Quick start
 
-### Install
+> **Heads up** — `agent-auth` is not on npm yet. Install today is from source; v0.2 will publish.
+
+### Install (today, from source)
 
 ```bash
-npm install agent-auth pg ioredis @aws-sdk/client-kms libsodium-wrappers
+git clone https://github.com/shizhigu/agent-auth.git
+cd agent-auth
+npm install
+npm run build
+# Then in your SaaS project:
+npm install /path/to/agent-auth
+# OR use `npm link` for an in-development workflow.
+```
+
+You'll also need the runtime peers:
+
+```bash
+npm install pg ioredis @aws-sdk/client-kms libsodium-wrappers
 # Plus your framework of choice:
 npm install express        # for the Express adapter
 # OR
 npm install hono           # for the Hono adapter
+```
+
+### Apply the database schema
+
+There's no migration runner yet (v0.3); apply the SQL files manually in order:
+
+```bash
+psql "$DATABASE_URL" -f schema/migrations/0001_init.sql
+psql "$DATABASE_URL" -f schema/migrations/0002_audit.sql
+psql "$DATABASE_URL" -f schema/migrations/0003_revocation.sql
+psql "$DATABASE_URL" -f schema/migrations/0004_idempotency.sql
+psql "$DATABASE_URL" -f schema/migrations/0005_audit_chain_utc.sql
+psql "$DATABASE_URL" -f schema/migrations/0006_recover_pending_approval.sql
 ```
 
 ### Mount the middleware (Express)
@@ -238,30 +321,52 @@ npm run test:chaos           # needs Docker
 npm run bench
 ```
 
-## What this is not
+## Roadmap
 
-- Not a replacement for Clerk / Auth0 / Better Auth — those handle **human** auth; agent-auth handles **agent** auth alongside.
-- Not browser automation — Browserbase, Skyvern, etc. occupy that space.
-- Not an agent governance / observability platform.
-- Not a token vault for already-authorized SaaS APIs (Nango / Arcade / Auth0-for-AI-Agents).
-- Not a marketplace or payment rail for agents.
+The server-side core is done; the next milestones are about **developer experience parity with Better Auth / Auth0**.
+
+### v0.2 — DX completeness (next ~4 weeks)
+
+- [ ] **`agent-auth` published on npm** — currently dev-only
+- [ ] **`@agent-auth/client`** — agent-side SDK that wraps PKCE generation, sealed-box decrypt, polling, and bearer-key auto-rotation in **5 lines** of agent code
+- [ ] **`npx create-agent-auth-app`** — scaffolder with SaaS + agent templates ready to run
+- [ ] **Reference end-to-end demo** — Acme SaaS + a Claude Code / Cursor agent registering and calling APIs (deployable to fly.io / Railway in one command)
+- [ ] **Docs site at `agent-auth.dev`** — VitePress / Nextra with copy-paste recipes
+- [ ] OTel tracing (`src/observability/tracing.ts`)
+- [ ] Idempotency middleware sugar (wraps `tierBIdempotent` for HTTP routes)
+- [ ] GitHub device-flow as alt registration path
+
+### v0.3 — Multi-provider + tooling
+
+- [ ] Generic OIDC provider — works against any standards-compliant IdP
+- [ ] Built-in providers: Google Workspace, GitLab, Microsoft Entra
+- [ ] **`agent-auth migrate up`** — first-class migration runner (replaces manual `psql -f`)
+- [ ] Type inference end-to-end (server-defined scopes flow into agent-side `useAgent()` hook)
+
+### v1.0 — Hosted + dashboard
+
+- [ ] **agent-auth Cloud** — managed control plane (you keep your DB; we run the validation hot path)
+- [ ] **Admin web dashboard** — keys / agents / audit / runbooks UI (today: CLI only)
+- [ ] Customer reference deployment with SOC 2 attestation
+- [ ] 30-day staging replay automated against production-shape data
+
+### v0.1.x — Maintenance
+
+- Bug fixes from real deployments
+- Worker / reaper hardening
+- No new features
 
 ## Status
 
 | | |
 |---|---|
-| **Version** | v0.1 (all 8 milestones complete) |
+| **Version** | v0.1 (server-side complete) |
+| **DX completeness** | ~30% — see [Project status](#project-status) for the gap list |
 | **Spec audit grade** | A (production-ready paying-customer level, per 13 rounds with codex / GPT-5) |
 | **Threats covered with tests** | 32 of 44 RT-* (11 explicitly operational, 1 reserved) |
 | **OWASP API 2023** | All 10 risks mapped — see `docs/security/OWASP-API-self-review.md` |
 | **Compliance posture** | SOC 2 / GDPR-ready audit trail; deploying SaaS owns the actual audit |
 | **License** | MIT |
-
-### Roadmap
-
-- **v0.1.x** — bug fixes from real deployments; reaper / worker hardening
-- **v0.2** — OTel tracing (`src/observability/tracing.ts`), idempotency middleware sugar, GitHub device-flow as alt path
-- **v1.0** — multi-provider identity (OIDC / SAML / passwordless), 30-day staging replay, customer reference deployments
 
 ## Stack
 
