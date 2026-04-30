@@ -146,9 +146,13 @@ export async function processAgentJobs(
       if (next_attempts >= claim.max_attempts) {
         await deps.postgres
           .query(
+            // Set completed_at on dead too — both 'completed' and
+            // 'dead' are terminal, and the reaper uses completed_at
+            // as the "finished" timestamp regardless of which.
             `UPDATE agent_jobs
                 SET status = 'dead', attempts = $2,
                     last_error = $3,
+                    completed_at = now(),
                     locked_at = NULL, locked_by = NULL
               WHERE id = $1::bigint`,
             [claim.id, next_attempts, errorMessage(err).slice(0, 500)],

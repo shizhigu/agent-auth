@@ -1,17 +1,21 @@
 /**
- * Reaper for expired auxiliary rows. SPEC §3.14 (recovery_approvals)
- * + §5.1.1 (idempotency).
+ * Reaper for expired auxiliary rows. SPEC §3.14 (recovery_approvals),
+ * §5.1.1 (idempotency), §6.4.2 (audit_outbox), §3.15 (agent_jobs).
  *
- * Both tables carry their own `expires_at` (24h default). Without a
- * reaper rows accumulate forever — neither is consulted post-expiry,
- * but the indexes grow and `count(*)` queries get slower over time.
+ * Each table carries its own retention semantic:
+ *   - agent_recovery_approvals: any row past expires_at + grace.
+ *   - agent_idempotency: only TERMINAL states (completed / failed /
+ *     manual_required) past expires_at + grace. The §5.1.2
+ *     reconciler still owns 'pending' / 'unknown' rows.
+ *   - agent_audit_outbox: rows where flushed_at IS NOT NULL AND
+ *     flushed_at < cutoff. WORM is canonical; the outbox row's
+ *     purpose is over once the put landed.
+ *   - agent_jobs: TERMINAL states (completed / dead) past
+ *     completed_at + grace. 'pending' / 'running' rows are owned
+ *     by processAgentJobs.
  *
- * Conservative: we only delete rows that are well past their expiry
- * AND in a TERMINAL state, so any in-flight idempotency reservation
- * the §5.1.2 reconciler is still working on isn't stomped on.
- *
- * Schedule it alongside the registration-session reaper (every minute
- * is fine; the `expires_at` index keeps the SELECT cheap).
+ * Schedule alongside the registration-session reaper (every minute
+ * is fine; the relevant indexes keep the SELECTs cheap).
  */
 
 import type { PostgresAdapter } from '../storage/postgres-adapter.js';
@@ -27,6 +31,8 @@ export interface ExpiredRowsReaperDeps {
 export interface ExpiredRowsReaperResult {
   readonly recovery_approvals_deleted: number;
   readonly idempotency_deleted: number;
+  readonly audit_outbox_deleted: number;
+  readonly agent_jobs_deleted: number;
 }
 
 const DEFAULT_GRACE_MS = 60 * 60 * 1000;
@@ -60,8 +66,29 @@ export async function reapExpiredRows(
     [cutoff],
   );
 
+  // agent_audit_outbox: WORM is canonical post-flush, so any row
+  // where flushed_at < cutoff has fulfilled its purpose.
+  const outboxRes = await deps.postgres.query(
+    `DELETE FROM agent_audit_outbox
+       WHERE flushed_at IS NOT NULL AND flushed_at < $1`,
+    [cutoff],
+  );
+
+  // agent_jobs: terminal-state rows past their completed_at + grace.
+  // 'pending' / 'running' rows are owned by processAgentJobs and
+  // must NOT be touched.
+  const jobsRes = await deps.postgres.query(
+    `DELETE FROM agent_jobs
+       WHERE status IN ('completed', 'dead')
+         AND completed_at IS NOT NULL
+         AND completed_at < $1`,
+    [cutoff],
+  );
+
   return {
     recovery_approvals_deleted: apprRes.rowCount,
     idempotency_deleted: idemRes.rowCount,
+    audit_outbox_deleted: outboxRes.rowCount,
+    agent_jobs_deleted: jobsRes.rowCount,
   };
 }

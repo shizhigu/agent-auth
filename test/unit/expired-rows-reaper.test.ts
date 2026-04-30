@@ -17,6 +17,8 @@ class FakePg {
   log: QueryLog[] = [];
   apprRowCount = 0;
   idemRowCount = 0;
+  outboxRowCount = 0;
+  jobsRowCount = 0;
   async query<R>(text: string, params?: ReadonlyArray<unknown>) {
     this.log.push(params !== undefined ? { text, params } : { text });
     if (/agent_recovery_approvals/.test(text)) {
@@ -25,41 +27,54 @@ class FakePg {
     if (/agent_idempotency/.test(text)) {
       return { rows: [] as unknown as R[], rowCount: this.idemRowCount };
     }
+    if (/agent_audit_outbox/.test(text)) {
+      return { rows: [] as unknown as R[], rowCount: this.outboxRowCount };
+    }
+    if (/agent_jobs/.test(text)) {
+      return { rows: [] as unknown as R[], rowCount: this.jobsRowCount };
+    }
     return { rows: [] as unknown as R[], rowCount: 0 };
   }
 }
 
 describe('reapExpiredRows (SPEC §3.14 + §5.1.1)', () => {
-  it('issues two DELETEs with cutoff = now - grace_ms', async () => {
+  it('issues four DELETEs with cutoff = now - grace_ms', async () => {
     const pg = new FakePg();
     const fixed = new Date('2027-06-15T12:00:00Z');
     await reapExpiredRows({
       postgres: pg as unknown as PostgresAdapter,
       now: () => fixed,
     });
-    expect(pg.log).toHaveLength(2);
-    const a = pg.log[0]!;
-    const i = pg.log[1]!;
-    expect(a.text).toMatch(/DELETE FROM agent_recovery_approvals/);
-    expect(a.params?.[0]).toBeInstanceOf(Date);
-    expect((a.params?.[0] as Date).getTime()).toBe(
+    expect(pg.log).toHaveLength(4);
+    const [a, i, ob, j] = pg.log;
+    expect(a!.text).toMatch(/DELETE FROM agent_recovery_approvals/);
+    expect(a!.params?.[0]).toBeInstanceOf(Date);
+    expect((a!.params?.[0] as Date).getTime()).toBe(
       fixed.getTime() - 60 * 60 * 1000,
     );
-    expect(i.text).toMatch(/DELETE FROM agent_idempotency/);
-    expect(i.text).toMatch(
+    expect(i!.text).toMatch(/DELETE FROM agent_idempotency/);
+    expect(i!.text).toMatch(
       /state IN \('completed', 'failed', 'manual_required'\)/,
     );
+    expect(ob!.text).toMatch(/DELETE FROM agent_audit_outbox/);
+    expect(ob!.text).toMatch(/flushed_at IS NOT NULL/);
+    expect(j!.text).toMatch(/DELETE FROM agent_jobs/);
+    expect(j!.text).toMatch(/status IN \('completed', 'dead'\)/);
   });
 
   it('returns the rowCount from each DELETE', async () => {
     const pg = new FakePg();
     pg.apprRowCount = 7;
     pg.idemRowCount = 13;
+    pg.outboxRowCount = 5;
+    pg.jobsRowCount = 2;
     const out = await reapExpiredRows({
       postgres: pg as unknown as PostgresAdapter,
     });
     expect(out.recovery_approvals_deleted).toBe(7);
     expect(out.idempotency_deleted).toBe(13);
+    expect(out.audit_outbox_deleted).toBe(5);
+    expect(out.agent_jobs_deleted).toBe(2);
   });
 
   it('honors a custom grace_ms', async () => {
