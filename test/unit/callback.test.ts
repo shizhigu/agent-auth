@@ -102,7 +102,14 @@ function makeAdapter(db: FakeDb): PostgresAdapter {
         if (text.includes("status = 'ready'")) {
           row.status = 'ready';
           row.account_id = params[1] as string;
-          row.result_ciphertext = params[2] as Buffer;
+          // For kind='revalidate' the SQL inlines `result_ciphertext = NULL`
+          // so params[2] is undefined; for register/recover/add_key the
+          // sealed-box ciphertext is bound as $3.
+          if (text.includes('result_ciphertext = NULL')) {
+            row.result_ciphertext = null;
+          } else {
+            row.result_ciphertext = (params[2] as Buffer) ?? null;
+          }
           return { rows: [], rowCount: 1 };
         }
       }
@@ -150,6 +157,12 @@ function makeAdapter(db: FakeDb): PostgresAdapter {
           idRow.status = 'active';
           idRow.revocation_source = null;
         }
+        return { rows: [], rowCount: idRow ? 1 : 0 };
+      }
+      // UPDATE identity SET last_revalidated_at (revalidate kind, SPEC §2.4)
+      if (/UPDATE agent_identities/.test(text) && /last_revalidated_at = now\(\)/.test(text)) {
+        const idVal = params[0] as string;
+        const idRow = db.identities.get(idVal);
         return { rows: [], rowCount: idRow ? 1 : 0 };
       }
       // SELECT account FOR UPDATE
@@ -485,6 +498,48 @@ describe('callback (SPEC §2.2.2)', () => {
     expect(out.status).toBe('success');
     expect(db.identities.get('id-r')!.status).toBe('active');
     expect(out.is_first_key).toBe(false); // recover is not first key
+  });
+
+  it('SPEC §2.4: kind=revalidate refreshes last_revalidated_at and stores NO sealed payload', async () => {
+    // Pre-seed an active identity that's overdue for revalidation. The
+    // session is bound to the same subject/audience.
+    db.accounts.set('acc-rv', { id: 'acc-rv', status: 'active', tier: 'cold' });
+    db.identities.set('id-rv', {
+      id: 'id-rv',
+      account_id: 'acc-rv',
+      provider: 'github_app',
+      subject: '12345',
+      audience: 'Iv1.abcdef',
+      status: 'active',
+      revocation_source: null,
+    });
+    seedSession({
+      poll_token: 'pav_' + 'x'.repeat(43),
+      kind: 'revalidate',
+      target_account_id: 'acc-rv',
+    });
+
+    const keysBefore = db.keys.size;
+    const out = await callback(
+      { provider: 'github_app', state: 'NONCE', code: 'CODE' },
+      {
+        postgres: pg,
+        kms,
+        identity_providers: [provider],
+        request_context: { ip_hash: Buffer.alloc(32), user_agent: 'test' },
+      },
+    );
+    expect(out.status).toBe('success');
+    if (out.status !== 'success') return;
+    expect(out.account_id).toBe('acc-rv');
+    expect(out.is_first_key).toBe(false);
+    // Key invariant: NO new key was issued (SPEC §2.4 step 6 — token
+    // discarded, not stored).
+    expect(db.keys.size).toBe(keysBefore);
+    // Session ready, but result_ciphertext is null (no payload to seal).
+    const sess = db.sessions.get('pav_' + 'x'.repeat(43));
+    expect(sess?.status).toBe('ready');
+    expect(sess?.result_ciphertext).toBeNull();
   });
 
   it('provider exchange failure is mapped to failed session', async () => {
