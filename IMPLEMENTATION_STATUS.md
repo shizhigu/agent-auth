@@ -143,10 +143,11 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
 
 ## Test summary at HEAD
 
-- **Unit tests**: 262 passing across 35 suites, ~880 ms wall (includes
-  fast-check property tests on idempotency state machine + canonicalRequestHash).
-- **Integration**: 32 passing against real Postgres 16 + Redis 7
-  (testcontainers, ~35 s):
+- **Unit tests**: 272 passing across 36 suites, ~900 ms wall (includes
+  fast-check property tests + AwsKmsAdapter via aws-sdk-client-mock +
+  down-migration structural invariants).
+- **Integration**: 34 passing against real Postgres 16 + Redis 7
+  (testcontainers, ~33 s):
   - validate-key.int (4): cache flow, RT-26 epoch invalidation, RT-3 redis
     fallback, invalid_secret rejection.
   - revoke.int (2): Tier B revoke writes log + bumps epoch + invalidates
@@ -181,6 +182,10 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done · `[blocked]` see note
     captured in agent_revocation_log are reapplied to a "restored"
     cluster; reverted key flips back to revoked; second pass is a no-op
     (idempotent reapply); untouched keys stay active.
+  - jobs.int (2): reapRegistrationSessions deletes 1h+old sessions
+    (preserves fresh ones); reconcileAccountKeySets walks Postgres
+    authoritative key list, SADDs missing entries, SREMs phantoms,
+    excludes revoked keys.
 - **Chaos**: 14 passing (~10 s):
   - redis-partition (2): RT-25 healthy + partitioned-Redis no-false-accept
     invariant via testcontainers stop().

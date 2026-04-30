@@ -19,8 +19,36 @@ describe('SQL migrations — structural invariants (SPEC §3.17)', () => {
     }
   });
 
-  it('migration filenames are monotonic (0001, 0002, ...)', () => {
-    const numbers = readAll().map((m) => Number(m.name.slice(0, 4)));
+  it('every up-migration has a corresponding down-migration (§3.17)', () => {
+    const all = readAll().map((m) => m.name);
+    const ups = all.filter((n) => n.endsWith('.sql') && !n.endsWith('.down.sql'));
+    const downs = all.filter((n) => n.endsWith('.down.sql'));
+    for (const u of ups) {
+      const expected = u.replace(/\.sql$/, '.down.sql');
+      expect(downs, `missing down migration for ${u}`).toContain(expected);
+    }
+  });
+
+  it('down-migrations are wrapped in BEGIN/COMMIT and use IF EXISTS guards', () => {
+    const downs = readAll().filter((m) => m.name.endsWith('.down.sql'));
+    expect(downs.length).toBeGreaterThanOrEqual(4);
+    for (const m of downs) {
+      expect(m.body).toMatch(/^\s*BEGIN\s*;/m);
+      expect(m.body).toMatch(/COMMIT\s*;\s*$/);
+      // DROP statements must use IF EXISTS so re-running the rollback is safe.
+      const dropTable = m.body.match(/DROP TABLE\b(?! IF EXISTS)/g);
+      const dropTrigger = m.body.match(/DROP TRIGGER\b(?! IF EXISTS)/g);
+      const dropFunction = m.body.match(/DROP FUNCTION\b(?! IF EXISTS)/g);
+      expect(dropTable, `${m.name} has unguarded DROP TABLE`).toBeNull();
+      expect(dropTrigger, `${m.name} has unguarded DROP TRIGGER`).toBeNull();
+      expect(dropFunction, `${m.name} has unguarded DROP FUNCTION`).toBeNull();
+    }
+  });
+
+  it('up-migration filenames are monotonic (0001, 0002, ...)', () => {
+    const numbers = readAll()
+      .filter((m) => !m.name.endsWith('.down.sql'))
+      .map((m) => Number(m.name.slice(0, 4)));
     for (let i = 1; i < numbers.length; i++) {
       const prev = numbers[i - 1];
       const cur = numbers[i];

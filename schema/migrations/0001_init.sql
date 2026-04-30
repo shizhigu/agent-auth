@@ -352,9 +352,17 @@ CREATE INDEX IF NOT EXISTS agent_device_flows_polling
 -- (audit_log + idempotency adjust permissions in their own migrations)
 -- ============================================================================
 
+-- App role:
+--   Persistent core (accounts, identities, api_keys): SELECT/INSERT/UPDATE
+--   only — closures go through admin (audited).
+--   Ephemeral / queue (jobs, registration_sessions, device_flows): also
+--   DELETE so background jobs (§3.6 reaper, §3.15 queue completion) can
+--   prune.
 GRANT SELECT, INSERT, UPDATE ON
-  agent_jobs, agent_accounts, agent_identities, agent_api_keys,
-  agent_registration_sessions, agent_device_flows
+  agent_accounts, agent_identities, agent_api_keys
+  TO agent_auth_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON
+  agent_jobs, agent_registration_sessions, agent_device_flows
   TO agent_auth_app;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON

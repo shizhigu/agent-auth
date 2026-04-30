@@ -83,7 +83,7 @@ export async function provisionFixture(): Promise<IntegrationFixture> {
   const bootClient = await adminAdapter['pool'].connect();
   try {
     for (const f of readdirSync(MIGRATIONS_DIR).sort()) {
-      if (!f.endsWith('.sql')) continue;
+      if (!f.endsWith('.sql') || f.endsWith('.down.sql')) continue;
       const sql = readFileSync(join(MIGRATIONS_DIR, f), 'utf8');
       await bootClient.query(sql);
     }

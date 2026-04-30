@@ -79,7 +79,7 @@ describe('chaos: Redis partition (SPEC §12.4 / RT-25)', () => {
     const bootClient = await adminAdapter['pool'].connect();
     try {
       for (const f of readdirSync(MIGRATIONS_DIR).sort()) {
-        if (!f.endsWith('.sql')) continue;
+        if (!f.endsWith('.sql') || f.endsWith('.down.sql')) continue;
         await bootClient.query(readFileSync(join(MIGRATIONS_DIR, f), 'utf8'));
       }
       await bootClient.query(
