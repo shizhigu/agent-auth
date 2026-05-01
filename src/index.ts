@@ -151,3 +151,17 @@ export type {
   ProcessAgentJobsResult,
   JobHandler,
 } from './jobs/process-agent-jobs.js';
+
+// High-level factory — turns a flat config into a ready-to-mount auth instance.
+export { vouch } from './factory.js';
+export type {
+  VouchInit,
+  VouchInstance,
+  VouchExpress,
+  DatabaseInit,
+  RedisInit,
+  KmsInit,
+  AwsKmsInit,
+  InMemoryKmsInit,
+  IdentityInit,
+} from './factory.js';

@@ -126,103 +126,84 @@ Vouch is **complementary** to existing auth tools, not a competitor. It plugs a 
 ```bash
 git clone https://github.com/shizhigu/agent-auth.git
 cd agent-auth
-npm install
-npm run build
+npm install && npm run build
 # Then in your SaaS project:
 npm install /path/to/agent-auth
-# OR use `npm link` for an in-development workflow.
-```
-
-You'll also need the runtime peers:
-
-```bash
-npm install pg ioredis @aws-sdk/client-kms libsodium-wrappers
-# Plus your framework of choice:
-npm install express        # for the Express adapter
-# OR
-npm install hono           # for the Hono adapter
 ```
 
 ### Apply the database schema
 
-There's no migration runner yet (v0.3); apply the SQL files manually in order:
+A real migration runner ships with v0.3 (`vouch migrate up`). Until then, apply the SQL files manually:
 
 ```bash
-psql "$DATABASE_URL" -f schema/migrations/0001_init.sql
-psql "$DATABASE_URL" -f schema/migrations/0002_audit.sql
-psql "$DATABASE_URL" -f schema/migrations/0003_revocation.sql
-psql "$DATABASE_URL" -f schema/migrations/0004_idempotency.sql
-psql "$DATABASE_URL" -f schema/migrations/0005_audit_chain_utc.sql
-psql "$DATABASE_URL" -f schema/migrations/0006_recover_pending_approval.sql
+for f in schema/migrations/0*.sql; do
+  case "$f" in *.down.sql) continue;; esac
+  psql "$DATABASE_URL" -f "$f"
+done
 ```
 
-### Mount the middleware (Express)
+### Wire it up (Express)
 
 ```ts
 import express from 'express';
-import { Pool } from 'pg';
-import { Redis } from 'ioredis';
-import { KMSClient } from '@aws-sdk/client-kms';
-import {
-  resolveConfig,
-  expressMiddleware,
-  makeValidateKeyDeps,
-  PostgresAdapter,
-  IoredisAdapter,
-  AwsKmsAdapter,
-  type AgentContext,
-} from 'agent-auth';
-import { GitHubAppProvider } from 'agent-auth/identity/github-app/browser-flow.js';
+import { vouch } from 'agent-auth';
 
-declare module 'express' {
+declare module 'express-serve-static-core' {
   interface Request {
-    agent?: AgentContext;     // NOT req.user — see SPEC §6.3
+    agent?: import('agent-auth').AgentContext; // NOT req.user — see SPEC §6.3
   }
 }
 
-// 1. Adapters
-const pg = new PostgresAdapter({
-  pool: new Pool({ connectionString: process.env.DATABASE_URL! }),
-  role: 'agent_auth_app',
-});
-const redisClient = new Redis(process.env.REDIS_URL!);
-const redis = new IoredisAdapter({
-  client: redisClient,
-  subscriber: redisClient.duplicate(),
-});
-await redis.loadScripts();
-const kms = new AwsKmsAdapter({
-  client: new KMSClient({ region: 'us-east-1' }),
-  pepper_key_alias: 'alias/agent-auth-pepper',
-  device_key_alias: 'alias/agent-auth-device-flow',
-  current_version: 1,
-  pepperFetcher: async (v) => /* read pepper bytes from KMS */ Buffer.alloc(32),
-});
-
-// 2. Config + dep tree
-const config = resolveConfig({
-  internal_secret: Buffer.from(process.env.AGENT_AUTH_INTERNAL_SECRET!, 'base64'),
-  identity_providers: [
-    new GitHubAppProvider({
+const auth = await vouch({
+  database: { url: process.env.DATABASE_URL! },
+  redis: { url: process.env.REDIS_URL! },
+  kms: {
+    provider: 'aws',
+    region: 'us-east-1',
+    pepper_alias: 'alias/vouch-pepper',
+    device_alias: 'alias/vouch-device-flow',
+    pepperFetcher: async (v) => /* read pepper bytes from KMS */ Buffer.alloc(32),
+  },
+  identity: {
+    github: {
       client_id: process.env.GH_CLIENT_ID!,
       client_secret: process.env.GH_CLIENT_SECRET!,
       webhook_secret: process.env.GH_WEBHOOK_SECRET!,
       app_private_key_pem: process.env.GH_APP_PRIVATE_KEY!,
-    }),
-  ],
-  storage: { postgres: pg, redis, kms },
+    },
+  },
+  internal_secret: process.env.AGENT_AUTH_INTERNAL_SECRET!,  // base64
+  base_url: process.env.PUBLIC_BASE_URL!,
 });
 
-// 3. Wire it
 const app = express();
-app.use('/api/agent/v1', expressMiddleware(makeValidateKeyDeps(config)));
+auth.express.mount(app);                                     // /agent-auth/*
+app.use('/api/agent/v1', auth.express.middleware());         // protect your API
 
 app.get('/api/agent/v1/whoami', (req, res) => {
-  res.json({ agent_id: req.agent!.agent_id, account_id: req.agent!.account_id });
+  res.json({ account_id: req.agent!.account_id, scopes: req.agent!.scopes });
 });
+
+app.listen(8080);
 ```
 
-A full walkthrough — including `/begin-registration`, `/callback`, `/rotate-key`, `/revoke`, webhook handling, and graceful shutdown — lives in [`examples/express-integration.ts`](examples/express-integration.ts). Hono and worker-cronjob templates sit alongside.
+That's it — `vouch()` builds Postgres / Redis / KMS adapters, wires the 12 lifecycle routes (`begin-registration`, `callback`, `registration-status`, `rotate-key`, `revoke`, `recover-account*`, `webhooks/:provider`, `healthz`, `well-known`, `list-keys`), handles raw-body parsing for webhook signature verification, and runs `redis.loadScripts()` + `sealedBoxReady()` for you.
+
+For the **agent side**, use [`@vouch/client`](packages/client/) — 5 lines from `register()` to authenticated `fetch()`:
+
+```ts
+import { register } from '@vouch/client';
+
+const vouch = await register({
+  saas_url: 'https://my-saas.com',
+  provider: 'github_app',
+  onChallengeUrl: (url) => console.log('Authorize at:', url),
+});
+
+const me = await vouch.fetch('/api/agent/v1/whoami').then((r) => r.json());
+```
+
+Need full control over adapters (custom Pool, BYO Redis, audit WORM, etc.)? See [`examples/express-integration.ts`](examples/express-integration.ts) for the manual wiring path. Need to try it locally first? See [`demo/`](demo/) — Postgres + Redis via docker compose, runs end-to-end in 5 minutes.
 
 ## How it works
 

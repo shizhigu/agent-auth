@@ -1,33 +1,19 @@
 /**
- * Vouch demo SaaS — minimal Express server demonstrating the full agent-auth
- * lifecycle without external dependencies (no GitHub OAuth, no AWS KMS).
+ * Vouch demo SaaS — minimal Express server demonstrating the full lifecycle
+ * with the high-level `vouch()` factory.
  *
- * Routes:
- *   POST /agent-auth/begin-registration
- *   GET  /__demo/auto-approve  (mock IdP — auto-approves and redirects)
- *   GET  /agent-auth/callback
- *   GET  /agent-auth/registration-status
- *   GET  /api/agent/v1/whoami  (protected — demonstrates `req.agent`)
+ * Replaces the 60-line "wire each adapter manually" pattern with ~15 lines
+ * of intentional config. Running this server end-to-end with the agent
+ * script in `../agent/run.ts` is the canonical check that the factory's
+ * dispatcher routes correctly to begin-registration / callback /
+ * registration-status / etc.
  *
  * Run: `npm run setup-db && npm run saas` (after `docker compose up -d`).
  */
 
 import express from 'express';
 import type { Request, Response, NextFunction } from 'express';
-import Redis from 'ioredis';
-import {
-  resolveConfig,
-  expressMiddleware,
-  makeValidateKeyDeps,
-  PostgresAdapter,
-  IoredisAdapter,
-  InMemoryKmsAdapter,
-} from 'agent-auth';
-import { beginRegistration } from 'agent-auth/routes/begin-registration.js';
-import { callback as handleCallback } from 'agent-auth/routes/callback.js';
-import { registrationStatus } from 'agent-auth/routes/registration-status.js';
-import { sealedBoxReady } from 'agent-auth/crypto/sealed-box.js';
-import { createHash } from 'node:crypto';
+import { vouch } from 'agent-auth';
 
 import { DemoStubProvider } from './stub-provider.js';
 import './express-augment.js';
@@ -36,134 +22,56 @@ const PORT = Number(process.env.SAAS_PORT) || 3000;
 const BASE_URL = `http://localhost:${PORT}`;
 
 // ---------------------------------------------------------------------------
-// 1. Adapters
-// ---------------------------------------------------------------------------
-
-const pg = new PostgresAdapter({
-  pool: { connectionString: process.env.DATABASE_URL! },
-  role: 'agent_auth_app',
-});
-
-const redisClient = new Redis(process.env.REDIS_URL!);
-const redis = new IoredisAdapter({
-  client: redisClient,
-  subscriber: redisClient.duplicate(),
-});
-await redis.loadScripts();
-await sealedBoxReady();
-
-// In-memory KMS — no AWS dependency. Pepper is deterministic so restarts
-// don't invalidate keys minted in the previous session.
-const kms = new InMemoryKmsAdapter({
-  initial_version: 1,
-  initial_pepper: Buffer.alloc(32, 0xa1),
-});
-
-// ---------------------------------------------------------------------------
-// 2. Stub identity provider — auto-approves on /__demo/auto-approve hit
+// 1. Build Vouch — the factory handles adapters, sealedBoxReady, dispatcher.
 // ---------------------------------------------------------------------------
 
 const stubProvider = new DemoStubProvider({
   autoApproveBaseUrl: `${BASE_URL}/__demo/auto-approve`,
 });
 
-// ---------------------------------------------------------------------------
-// 3. Resolve config (the lib's central knob — see SPEC §11.4)
-// ---------------------------------------------------------------------------
-
-const config = resolveConfig({
+const auth = await vouch({
+  database: { url: process.env.DATABASE_URL! },
+  redis: { url: process.env.REDIS_URL! },
+  kms: { provider: 'in-memory', pepper: Buffer.alloc(32, 0xa1) },
+  // The demo uses a stub identity provider (no GitHub OAuth setup needed).
+  // Real SaaS would use `identity: { github: { client_id, client_secret, ... } }`.
+  identity: { custom: [stubProvider] },
   internal_secret: Buffer.from(process.env.AGENT_AUTH_INTERNAL_SECRET!, 'base64'),
-  identity_providers: [stubProvider],
-  storage: { postgres: pg, redis, kms },
+  base_url: BASE_URL,
   observability: { service_name: 'vouch-demo-saas', metric_prefix: 'vouch_demo' },
 });
 
 // ---------------------------------------------------------------------------
-// 4. Per-request context — IP hash + UA. Real apps pull these from headers.
-// ---------------------------------------------------------------------------
-
-function requestContext(req: Request) {
-  const ip = req.ip ?? '127.0.0.1';
-  const ip_hash = createHash('sha256').update(ip).digest();
-  const user_agent = String(req.headers['user-agent'] ?? 'demo');
-  return { ip_hash, user_agent };
-}
-
-// ---------------------------------------------------------------------------
-// 5. App
+// 2. Wire the Express app.
 // ---------------------------------------------------------------------------
 
 const app = express();
-app.use(express.json({ limit: '4kb' }));
 
-// ----- 5a. agent-auth lifecycle routes ------------------------------------
+// Mount Vouch BEFORE any global JSON parser. mount() handles webhook raw body
+// + JSON for the rest of the lifecycle routes internally.
+auth.express.mount(app);
 
-app.post('/agent-auth/begin-registration', async (req, res, next) => {
-  try {
-    const out = await beginRegistration(req.body, {
-      postgres: pg,
-      identity_providers: [stubProvider],
-      redirect_uri: () => `${BASE_URL}/agent-auth/callback`,
-      audience: () => 'demo-audience',
-      request_context: requestContext(req),
-    });
-    res.json(out);
-  } catch (e) { next(e); }
-});
+// Now the rest of your app's routes can use the global JSON parser.
+app.use(express.json());
 
-app.get('/agent-auth/callback', async (req, res, next) => {
-  try {
-    const out = await handleCallback(
-      {
-        provider: 'demo-stub',
-        state: String(req.query.state ?? ''),
-        code: String(req.query.code ?? ''),
-      },
-      {
-        postgres: pg,
-        kms,
-        identity_providers: [stubProvider],
-        request_context: requestContext(req),
-      },
-    );
-    // In a real app you'd render an HTML page saying "you can close this tab".
-    res.json({ ...out, message: 'Registration callback completed. Agent will fetch via polling.' });
-  } catch (e) { next(e); }
-});
-
-app.get('/agent-auth/registration-status', async (req, res, next) => {
-  try {
-    const out = await registrationStatus(
-      { poll_token: String(req.query.poll_token ?? '') },
-      { postgres: pg, endpoint: 'registration' },
-    );
-    res.json(out);
-  } catch (e) { next(e); }
-});
-
-// ----- 5b. demo-only auto-approve route -----------------------------------
-// Replaces the human clicking "Authorize" on a real IdP's consent page.
-// In production with GitHubAppProvider, this URL would be github.com itself.
+// ----- Demo-only auto-approve route — replaces the human clicking
+// "Authorize" on a real IdP. Mounted AFTER auth.express.mount() so
+// the dispatcher takes precedence for /agent-auth/*.
 app.get('/__demo/auto-approve', (req, res) => {
   const state = String(req.query.state ?? '');
   const redirectUri = String(req.query.redirect_uri ?? '');
   if (!state || !redirectUri) {
     return res.status(400).json({ error: 'missing state or redirect_uri' });
   }
-  const callbackUrl =
-    `${redirectUri}?state=${encodeURIComponent(state)}&code=demo-${Date.now()}`;
+  const callbackUrl = `${redirectUri}?state=${encodeURIComponent(state)}&code=demo-${Date.now()}`;
   res.redirect(302, callbackUrl);
 });
 
-// ----- 5c. protected routes — middleware validates Bearer token -----------
-
-const validateDeps = makeValidateKeyDeps(config);
-app.use('/api/agent/v1', expressMiddleware(validateDeps));
+// ----- Protected agent API routes.
+app.use('/api/agent/v1', auth.express.middleware());
 
 app.get('/api/agent/v1/whoami', (req, res) => {
-  if (!req.agent) {
-    return res.status(401).json({ error: { code: 'invalid_key' } });
-  }
+  if (!req.agent) return res.status(401).json({ error: { code: 'invalid_key' } });
   res.json({
     account_id: req.agent.account_id,
     key_id: req.agent.key_id,
@@ -177,7 +85,7 @@ app.get('/api/agent/v1/whoami', (req, res) => {
   });
 });
 
-// ----- 5d. error handler --------------------------------------------------
+// ----- Error handler.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const e = err as { status?: number; code?: string; message?: string };
@@ -189,7 +97,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 // ---------------------------------------------------------------------------
-// 6. Listen + graceful shutdown
+// 3. Listen + graceful shutdown.
 // ---------------------------------------------------------------------------
 
 const server = app.listen(PORT, () => {
@@ -201,9 +109,7 @@ const server = app.listen(PORT, () => {
 
 async function shutdown() {
   server.close();
-  await pg.close().catch(() => undefined);
-  await redis.close?.().catch(() => undefined);
-  redisClient.disconnect();
+  await auth.shutdown();
   process.exit(0);
 }
 process.on('SIGTERM', shutdown);
