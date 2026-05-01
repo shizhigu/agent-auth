@@ -38,7 +38,7 @@
 | Agent-side SDK (`@vouch/client`) | **Dev preview** — lives in [`packages/client/`](packages/client/) (not yet on npm) | v0.2 |
 | CLI scaffolder (`npx create-vouch-app`) | **Yes** — Express SaaS or Node agent in one command, ready to run | shipped |
 | Reference end-to-end demo (SaaS + agent) | **Yes** — runnable in `apps/demo/` (Postgres + Redis via docker compose, no AWS / GitHub OAuth needed) | v0.2 |
-| Docs site (`vouch.dev`) | **No** — README + SPEC only | v0.2 |
+| Docs site | **Yes** — VitePress site under [`apps/docs/`](apps/docs/), 9 pages, `npm run docs:dev` to preview | shipped |
 | Multi-provider identity | **Yes** — `identity.github`, `identity.google`, `identity.oidc` (auto-discovery), or any pre-built `IdentityProvider` via `identity.custom` | shipped |
 | Migration runner (`vouch migrate up`) | **Yes** — `@vouch/cli` ships forward + rollback + status; tracking table auto-created | shipped |
 | Vouch Cloud (hosted + admin dashboard) | **No** — self-host only | v1.0 |
@@ -380,7 +380,7 @@ The server-side engine is done; the next milestones are about **developer experi
 - [ ] **`@vouch/client` published on npm**
 - [x] **`npx create-vouch-app`** — scaffolder; templates: `saas-express` (default) and `agent`
 - [x] **Reference end-to-end demo** — see [`apps/demo/`](apps/demo/) (SaaS + agent runnable via `docker compose up && npm run saas && npm run agent`)
-- [ ] **Docs site at `vouch.dev`** — VitePress / Nextra with copy-paste recipes
+- [x] **Docs site** — VitePress under [`apps/docs/`](apps/docs/); pages: home, getting-started, concepts, providers, CLI, client SDK, Hono guide, demo guide, lifecycle reference, error codes reference, FAQ. Hostable on GitHub Pages or vouch.dev.
 - [ ] OTel tracing (`src/observability/tracing.ts`)
 - [ ] Idempotency middleware sugar (wraps `tierBIdempotent` for HTTP routes)
 - [ ] GitHub device-flow as alt registration path

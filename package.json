@@ -19,6 +19,9 @@
     "test": "npm run test --workspaces --if-present",
     "test:integration": "npm run test:integration --workspace=agent-auth",
     "test:chaos": "npm run test:chaos --workspace=agent-auth",
-    "bench": "npm run bench --workspace=agent-auth"
+    "bench": "npm run bench --workspace=agent-auth",
+    "docs:dev": "npm run dev --workspace=vouch-docs",
+    "docs:build": "npm run build --workspace=vouch-docs",
+    "docs:preview": "npm run preview --workspace=vouch-docs"
   }
 }
