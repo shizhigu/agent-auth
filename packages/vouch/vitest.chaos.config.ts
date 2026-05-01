@@ -1,12 +1,8 @@
 import { defineConfig } from 'vitest/config';
-import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
-const libsodiumCjs = fileURLToPath(
-  new URL(
-    './node_modules/libsodium-wrappers/dist/modules/libsodium-wrappers.js',
-    import.meta.url,
-  ),
-);
+const require_ = createRequire(import.meta.url);
+const libsodiumCjs = require_.resolve('libsodium-wrappers/dist/modules/libsodium-wrappers.js');
 
 export default defineConfig({
   resolve: {

@@ -1,14 +1,14 @@
 {
-  "extends": "../tsconfig.json",
+  "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "..",
     "noEmit": true,
     "skipLibCheck": true,
     "paths": {
-      "agent-auth": ["../src/index.ts"],
-      "agent-auth/hono": ["../src/hono.ts"],
+      "agent-auth": ["../packages/vouch/src/index.ts"],
+      "agent-auth/hono": ["../packages/vouch/src/hono.ts"],
       "agent-auth/identity/github-app/browser-flow.js": [
-        "../src/identity/github-app/browser-flow.ts"
+        "../packages/vouch/src/identity/github-app/browser-flow.ts"
       ]
     }
   },

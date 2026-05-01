@@ -37,10 +37,10 @@
 | Published on npm (`agent-auth` package) | **No** — install today via `git clone && npm run build` | v0.2 |
 | Agent-side SDK (`@vouch/client`) | **Dev preview** — lives in [`packages/client/`](packages/client/) (not yet on npm) | v0.2 |
 | CLI scaffolder (`npx create-vouch-app`) | **No** | v0.2 |
-| Reference end-to-end demo (SaaS + agent) | **Yes** — runnable in `demo/` (Postgres + Redis via docker compose, no AWS / GitHub OAuth needed) | v0.2 |
+| Reference end-to-end demo (SaaS + agent) | **Yes** — runnable in `apps/demo/` (Postgres + Redis via docker compose, no AWS / GitHub OAuth needed) | v0.2 |
 | Docs site (`vouch.dev`) | **No** — README + SPEC only | v0.2 |
 | Multi-provider identity (Google / GitLab / generic OIDC) | **No** — GitHub-only at v0.1 | v0.3 |
-| Migration runner (`vouch migrate up`) | **No** — apply `schema/migrations/*.sql` manually | v0.3 |
+| Migration runner (`vouch migrate up`) | **No** — apply `packages/vouch/schema/migrations/*.sql` manually | v0.3 |
 | Vouch Cloud (hosted + admin dashboard) | **No** — self-host only | v1.0 |
 
 If you want to **try it today**, see [Quick start](#quick-start). If you want to **build production on top of it**, the realistic ETA is **v0.2 (~4 weeks)** when DX completes — the server-side core is solid, but the rough edges are real.
@@ -136,7 +136,7 @@ npm install /path/to/agent-auth
 A real migration runner ships with v0.3 (`vouch migrate up`). Until then, apply the SQL files manually:
 
 ```bash
-for f in schema/migrations/0*.sql; do
+for f in packages/vouch/schema/migrations/0*.sql; do
   case "$f" in *.down.sql) continue;; esac
   psql "$DATABASE_URL" -f "$f"
 done
@@ -226,7 +226,7 @@ const vouch = await register({
 const me = await vouch.fetch('/api/agent/v1/whoami').then((r) => r.json());
 ```
 
-Need full control over adapters (custom Pool, BYO Redis, audit WORM, etc.)? See [`examples/express-integration.ts`](examples/express-integration.ts) for the manual wiring path. Need to try it locally first? See [`demo/`](demo/) — Postgres + Redis via docker compose, runs end-to-end in 5 minutes.
+Need full control over adapters (custom Pool, BYO Redis, audit WORM, etc.)? See [`examples/express-integration.ts`](examples/express-integration.ts) for the manual wiring path. Need to try it locally first? See [`apps/demo/`](apps/demo/) — Postgres + Redis via docker compose, runs end-to-end in 5 minutes.
 
 ## How it works
 
@@ -302,7 +302,7 @@ Per the threat model (`SPEC.md` Part VI), the app role cannot tamper with audit 
 | [`docs/security/OWASP-API-self-review.md`](docs/security/OWASP-API-self-review.md) | OWASP API 2023 mapping |
 | [`audit/`](audit/) | 13 rounds of design-audit history (preserved for rationale) |
 | [`examples/`](examples/) | Express, Hono, and worker-cronjob templates |
-| [`schema/migrations/`](schema/migrations/) | Forward + rollback SQL DDL (0001..0006) |
+| [`packages/vouch/schema/migrations/`](packages/vouch/schema/migrations/) | Forward + rollback SQL DDL (0001..0006) |
 
 ## Testing
 
@@ -335,7 +335,7 @@ The server-side engine is done; the next milestones are about **developer experi
 - [x] **`@vouch/client` dev preview** — agent-side SDK lives in [`packages/client/`](packages/client/); 5-line `register()` happy path; auto-rotation deferred to v0.3
 - [ ] **`@vouch/client` published on npm**
 - [ ] **`npx create-vouch-app`** — scaffolder with SaaS + agent templates ready to run
-- [x] **Reference end-to-end demo** — see [`demo/`](demo/) (SaaS + agent runnable via `docker compose up && npm run saas && npm run agent`)
+- [x] **Reference end-to-end demo** — see [`apps/demo/`](apps/demo/) (SaaS + agent runnable via `docker compose up && npm run saas && npm run agent`)
 - [ ] **Docs site at `vouch.dev`** — VitePress / Nextra with copy-paste recipes
 - [ ] OTel tracing (`src/observability/tracing.ts`)
 - [ ] Idempotency middleware sugar (wraps `tierBIdempotent` for HTTP routes)
@@ -383,7 +383,7 @@ Vouch is **roadmap-driven**. The current focus is v0.2 (DX completeness — see 
 
 - **Bug reports and security findings** — open an [Issue](https://github.com/shizhigu/agent-auth/issues), or for vulnerabilities follow [`SECURITY.md`](SECURITY.md) (private advisory).
 - **Bug-fix PRs** — please open an issue first so we can align on the fix shape; PRs with linked issues get fast-tracked.
-- **Feature PRs** — we evaluate against the roadmap. For anything that touches `SPEC.md`, the threat model, or `src/crypto/` / `src/middleware/validate-key.ts` / `src/distributed/`, please open an issue first to discuss the design before writing code. An ADR in Appendix B is required for spec-touching changes (see ADR-001..ADR-014 for the format).
+- **Feature PRs** — we evaluate against the roadmap. For anything that touches `SPEC.md`, the threat model, or `packages/vouch/src/crypto/` / `packages/vouch/src/middleware/validate-key.ts` / `packages/vouch/src/distributed/`, please open an issue first to discuss the design before writing code. An ADR in Appendix B is required for spec-touching changes (see ADR-001..ADR-014 for the format).
 - **Good first issues** — labeled in the [issue tracker](https://github.com/shizhigu/agent-auth/issues?q=is%3Aopen+label%3A%22good+first+issue%22).
 
 We aim to respond to issues and PRs within **a few business days**. Auth is supply-chain-sensitive — review depth matters more than throughput, so please be patient if a PR sits in review for a beat.

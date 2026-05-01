@@ -8,8 +8,9 @@ set -euo pipefail
 
 : "${DATABASE_URL:?Set DATABASE_URL (see .env.example)}"
 
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-MIG_DIR="$REPO_ROOT/schema/migrations"
+# From apps/demo/scripts/ -> ../../.. is the monorepo root.
+REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+MIG_DIR="$REPO_ROOT/packages/vouch/schema/migrations"
 
 echo "Applying migrations from $MIG_DIR ..."
 

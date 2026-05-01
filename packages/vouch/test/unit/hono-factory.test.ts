@@ -25,7 +25,7 @@ function stubLifecycle(): VouchLifecycle {
     webhook: async ({ provider }) => ({ called: 'webhook', provider }) as never,
     healthz: async () => ({ http_status: 200, body: { status: 'healthy' } }) as never,
     wellKnown: ({ base_url }) => ({ called: 'well-known', base_url }) as never,
-    validateBearer: async (token) =>
+    validateBearer: async (_token) =>
       ({
         account_id: 'acc-stub',
         key_id: 'k',

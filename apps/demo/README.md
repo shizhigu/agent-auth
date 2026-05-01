@@ -22,15 +22,14 @@ Prereqs: **Docker**, **Node 20+**, **psql** (the Postgres CLI; `brew install lib
 ### One-time setup
 
 ```bash
-# 1. Build the lib (from the repo root)
+# 1. Install + build everything from the repo root (workspace install).
 cd /path/to/agent-auth
 npm install
 npm run build
 
 # 2. Configure the demo
-cd demo
+cd apps/demo
 cp .env.example .env
-npm install
 
 # 3. Start Postgres + Redis
 docker compose up -d
@@ -46,7 +45,7 @@ Open two terminals.
 
 **Terminal 1 — the SaaS:**
 ```bash
-cd demo
+cd apps/demo
 set -a && source .env && set +a
 npm run saas
 # -> Vouch demo SaaS listening on http://localhost:3000
@@ -54,7 +53,7 @@ npm run saas
 
 **Terminal 2 — the agent:**
 ```bash
-cd demo
+cd apps/demo
 set -a && source .env && set +a
 npm run agent
 ```
@@ -83,7 +82,7 @@ Done. Agent successfully registered and called a protected API.
 | File | Role |
 |---|---|
 | `docker-compose.yml` | Postgres 16 + Redis 7 on non-default ports (`55432` / `56379`) |
-| `scripts/setup-db.sh` | Applies `schema/migrations/0001..0006.sql` from the repo |
+| `scripts/setup-db.sh` | Applies `packages/vouch/schema/migrations/0001..0006.sql` from the repo |
 | `saas/server.ts` | Express SaaS — wires the lib's lifecycle routes + protected `/api/agent/v1/whoami` |
 | `saas/stub-provider.ts` | Auto-approving `IdentityProvider` (replaces GitHub OAuth for local dev) |
 | `agent/run.ts` | Node script that drives the agent side of the flow end-to-end |
@@ -101,7 +100,7 @@ Done. Agent successfully registered and called a protected API.
 | Owner-approval recovery | not exercised | `emitOwnerApprovalRequest` + signed approval |
 | Logging / metrics / tracing | bare `console.log` | `createLogger` + `MetricsRegistry` (+ OTel in v0.2) |
 
-For the production wiring see [`examples/express-integration.ts`](../examples/express-integration.ts) at the repo root.
+For the production wiring see [`examples/express-integration.ts`](../../examples/express-integration.ts) at the repo root.
 
 ## Cleanup
 
@@ -121,4 +120,4 @@ docker compose down -v   # also wipes the database volume
 
 ## Going further
 
-Once this works, look at [`examples/express-integration.ts`](../examples/express-integration.ts) for the full production wiring (real GitHub App provider, KMS, scopes, error handlers), and [`examples/worker-cronjobs.ts`](../examples/worker-cronjobs.ts) for the background workers (audit chain verifier, rotation grace expirer, idempotency reconciler, etc.).
+Once this works, look at [`examples/express-integration.ts`](../../examples/express-integration.ts) for the full production wiring (real GitHub App provider, KMS, scopes, error handlers), and [`examples/worker-cronjobs.ts`](../../examples/worker-cronjobs.ts) for the background workers (audit chain verifier, rotation grace expirer, idempotency reconciler, etc.).

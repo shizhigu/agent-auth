@@ -1,14 +1,10 @@
 import { defineConfig } from 'vitest/config';
-import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 // libsodium-wrappers ESM build references a sibling module that isn't shipped;
 // the unit config aliases this away — integration + chaos need the same fix.
-const libsodiumCjs = fileURLToPath(
-  new URL(
-    './node_modules/libsodium-wrappers/dist/modules/libsodium-wrappers.js',
-    import.meta.url,
-  ),
-);
+const require_ = createRequire(import.meta.url);
+const libsodiumCjs = require_.resolve('libsodium-wrappers/dist/modules/libsodium-wrappers.js');
 
 export default defineConfig({
   resolve: {

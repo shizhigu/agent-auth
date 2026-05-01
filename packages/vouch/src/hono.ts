@@ -126,7 +126,7 @@ export function honoRoutes(auth: VouchInstance): Hono {
     return c.json(out as unknown as Record<string, unknown>);
   });
 
-  router.get('/healthz', async (c) => {
+  router.get('/healthz', async (_c) => {
     const out = await lc.healthz();
     return new Response(JSON.stringify(out.body), {
       status: out.http_status,

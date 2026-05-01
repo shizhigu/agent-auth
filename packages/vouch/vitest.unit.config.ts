@@ -1,15 +1,13 @@
 import { defineConfig } from 'vitest/config';
-import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 // libsodium-wrappers ships a broken ESM build (its .mjs imports a sibling
-// libsodium.mjs that isn't published). Resolve to the CJS file via an absolute
-// path — this bypasses the package's `exports` map entirely.
-const libsodiumCjs = fileURLToPath(
-  new URL(
-    './node_modules/libsodium-wrappers/dist/modules/libsodium-wrappers.js',
-    import.meta.url,
-  ),
-);
+// libsodium.mjs that isn't published). Resolve to the CJS file directly so
+// vitest never touches the package's `exports` map. createRequire follows
+// node_modules resolution so this works regardless of where npm hoisted
+// the dep (root in workspace setups, package-local otherwise).
+const require_ = createRequire(import.meta.url);
+const libsodiumCjs = require_.resolve('libsodium-wrappers/dist/modules/libsodium-wrappers.js');
 
 export default defineConfig({
   resolve: {
