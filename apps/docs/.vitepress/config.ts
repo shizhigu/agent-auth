@@ -47,6 +47,7 @@ export default defineConfig({
             { text: 'Identity providers', link: '/providers' },
             { text: 'Migrations CLI', link: '/cli' },
             { text: 'Agent SDK (@vouch/client)', link: '/client-sdk' },
+            { text: 'OpenTelemetry tracing', link: '/guides/tracing' },
             { text: 'Hono integration', link: '/guides/hono' },
             { text: 'End-to-end demo', link: '/guides/demo' },
           ],

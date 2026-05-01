@@ -58,6 +58,7 @@ import {
   OidcProvider,
   type OidcProviderConfig,
 } from './identity/oidc/provider.js';
+import { instrumentLifecycle, type TracingConfig } from './observability/tracing.js';
 import {
   resolveConfig,
   type ResolvedConfig,
@@ -173,6 +174,14 @@ export interface VouchInit {
   readonly reconciliation?: ReconciliationConfig;
   readonly revalidation?: RevalidationConfig;
   readonly failover?: FailoverConfig;
+  /**
+   * Optional OpenTelemetry tracing — pass an OTel-compatible Tracer (e.g.
+   * `trace.getTracer('vouch')` from your app's `@opentelemetry/api`
+   * setup). Each `auth.lifecycle.*` call opens a span. Vouch never
+   * imports `@opentelemetry/api` directly — leave this undefined to
+   * disable instrumentation entirely (zero overhead).
+   */
+  readonly tracing?: TracingConfig;
 }
 
 // ---------------------------------------------------------------------------
@@ -374,8 +383,12 @@ export async function vouch(init: VouchInit): Promise<VouchInstance> {
   };
 
   // Framework-agnostic lifecycle — used by the express handler below AND by
-  // alternative framework adapters (e.g. agent-auth/hono).
-  const lifecycle: VouchLifecycle = makeLifecycle(dispatcherDeps);
+  // alternative framework adapters (e.g. agent-auth/hono). Optionally wrapped
+  // in OTel spans if the SaaS configured `tracing`.
+  const baseLifecycle = makeLifecycle(dispatcherDeps);
+  const lifecycle: VouchLifecycle = init.tracing
+    ? instrumentLifecycle(baseLifecycle, init.tracing)
+    : baseLifecycle;
 
   const expressApi: VouchExpress = {
     mount(app, opts) {

@@ -381,7 +381,7 @@ The server-side engine is done; the next milestones are about **developer experi
 - [x] **`npx create-vouch-app`** — scaffolder; templates: `saas-express` (default) and `agent`
 - [x] **Reference end-to-end demo** — see [`apps/demo/`](apps/demo/) (SaaS + agent runnable via `docker compose up && npm run saas && npm run agent`)
 - [x] **Docs site** — VitePress under [`apps/docs/`](apps/docs/); pages: home, getting-started, concepts, providers, CLI, client SDK, Hono guide, demo guide, lifecycle reference, error codes reference, FAQ. Hostable on GitHub Pages or vouch.dev.
-- [ ] OTel tracing (`src/observability/tracing.ts`)
+- [x] OTel tracing — opt-in via `tracing: { tracer }`; lib never imports `@opentelemetry/api`. See [`apps/docs/guides/tracing.md`](apps/docs/guides/tracing.md).
 - [ ] Idempotency middleware sugar (wraps `tierBIdempotent` for HTTP routes)
 - [ ] GitHub device-flow as alt registration path
 

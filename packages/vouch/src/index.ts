@@ -181,3 +181,12 @@ export type {
   OidcEndpoints,
   Fetcher as OidcFetcher,
 } from './identity/oidc/provider.js';
+
+// OpenTelemetry tracing helpers (optional).
+export { instrumentLifecycle, SPAN_STATUS } from './observability/tracing.js';
+export type {
+  TracingConfig,
+  VouchTracerLike,
+  VouchSpanLike,
+  SpanStatusCode,
+} from './observability/tracing.js';
