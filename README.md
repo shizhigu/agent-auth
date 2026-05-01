@@ -39,7 +39,7 @@
 | CLI scaffolder (`npx create-vouch-app`) | **Yes** — Express SaaS or Node agent in one command, ready to run | shipped |
 | Reference end-to-end demo (SaaS + agent) | **Yes** — runnable in `apps/demo/` (Postgres + Redis via docker compose, no AWS / GitHub OAuth needed) | v0.2 |
 | Docs site (`vouch.dev`) | **No** — README + SPEC only | v0.2 |
-| Multi-provider identity (Google / GitLab / generic OIDC) | **No** — GitHub-only at v0.1 | v0.3 |
+| Multi-provider identity | **Yes** — `identity.github`, `identity.google`, `identity.oidc` (auto-discovery), or any pre-built `IdentityProvider` via `identity.custom` | shipped |
 | Migration runner (`vouch migrate up`) | **Yes** — `@vouch/cli` ships forward + rollback + status; tracking table auto-created | shipped |
 | Vouch Cloud (hosted + admin dashboard) | **No** — self-host only | v1.0 |
 
@@ -201,6 +201,38 @@ app.listen(8080);
 
 That's it — `vouch()` builds Postgres / Redis / KMS adapters, wires the 12 lifecycle routes (`begin-registration`, `callback`, `registration-status`, `rotate-key`, `revoke`, `recover-account*`, `webhooks/:provider`, `healthz`, `well-known`, `list-keys`), handles raw-body parsing for webhook signature verification, and runs `redis.loadScripts()` + `sealedBoxReady()` for you.
 
+### Identity providers
+
+Pick one or more — they're additive:
+
+```ts
+const auth = await vouch({
+  // ... database / redis / kms / internal_secret as above ...
+  identity: {
+    github: {
+      client_id: process.env.GH_CLIENT_ID!,
+      client_secret: process.env.GH_CLIENT_SECRET!,
+      webhook_secret: process.env.GH_WEBHOOK_SECRET!,
+      app_private_key_pem: process.env.GH_APP_PRIVATE_KEY!,
+    },
+    google: {
+      client_id: process.env.GOOGLE_CLIENT_ID!,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+      hosted_domain: 'acme.com',  // optional — restrict to one Workspace
+    },
+    oidc: {
+      // Generic OIDC — any standards-compliant IdP via discovery.
+      name: 'okta',
+      issuer_url: 'https://your-tenant.okta.com',
+      client_id: process.env.OKTA_CLIENT_ID!,
+      client_secret: process.env.OKTA_CLIENT_SECRET!,
+    },
+  },
+});
+```
+
+Need a provider Vouch doesn't ship? Implement `IdentityProvider` and pass it via `identity.custom: [yourProvider]`. Each registration session picks one provider via `request.body.provider` (e.g. `'github_app' | 'google' | 'okta'`).
+
 ### Same wiring on Hono
 
 Vouch ships a Hono adapter for Bun / Cloudflare Workers / Deno deployments. Same `vouch()` call, then:
@@ -355,8 +387,9 @@ The server-side engine is done; the next milestones are about **developer experi
 
 ### v0.3 — Multi-provider + tooling
 
-- [ ] Generic OIDC provider — works against any standards-compliant IdP
-- [ ] Built-in providers: Google Workspace, GitLab, Microsoft Entra
+- [x] Generic OIDC provider — works against any standards-compliant IdP via `/.well-known/openid-configuration` discovery
+- [x] Google / Google Workspace provider (with `hosted_domain` restriction)
+- [ ] Microsoft Entra, GitLab, Okta, Auth0 thin presets (use `identity.oidc` directly until then)
 - [x] **`vouch migrate up`** — first-class migration runner (`@vouch/cli`); ships forward + rollback + status, transactional with auto tracking table
 - [ ] Type inference end-to-end (server-defined scopes flow into agent-side `useAgent()` hook)
 

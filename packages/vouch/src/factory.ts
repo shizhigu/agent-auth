@@ -51,6 +51,14 @@ import {
   type GitHubAppProviderConfig,
 } from './identity/github-app/browser-flow.js';
 import {
+  GoogleProvider,
+  type GoogleProviderConfig,
+} from './identity/google/provider.js';
+import {
+  OidcProvider,
+  type OidcProviderConfig,
+} from './identity/oidc/provider.js';
+import {
   resolveConfig,
   type ResolvedConfig,
   type ValidationConfig,
@@ -116,11 +124,22 @@ export type KmsInit = AwsKmsInit | InMemoryKmsInit;
 
 export interface IdentityInit {
   readonly github?: GitHubAppProviderConfig;
+  readonly google?: GoogleProviderConfig;
   /**
-   * Pre-built provider instances. Use this for in-house providers, generic
-   * OIDC, SAML wrappers, or test stubs that don't have a built-in shortcut
-   * here. Providers added via `custom` run alongside any declared shortcuts
-   * (e.g. `github` + a custom OIDC).
+   * Generic OIDC provider — works against any standards-compliant
+   * IdP (Microsoft Entra, Okta, Auth0, Keycloak, Ory Hydra, ZITADEL).
+   * Either set `issuer_url` for auto-discovery, or pre-configure
+   * `endpoints`.
+   *
+   * To register multiple OIDC providers (e.g. one per IdP), wire them
+   * up manually and pass the instances via `custom`.
+   */
+  readonly oidc?: OidcProviderConfig;
+  /**
+   * Pre-built provider instances. Use this for in-house providers,
+   * SAML wrappers, multiple OIDC providers, or test stubs. Providers
+   * added via `custom` run alongside any declared shortcuts (e.g.
+   * `github` + a custom OIDC).
    */
   readonly custom?: ReadonlyArray<IdentityProvider>;
 }
@@ -275,12 +294,18 @@ export async function vouch(init: VouchInit): Promise<VouchInstance> {
   if (init.identity.github) {
     identity_providers.push(new GitHubAppProvider(init.identity.github));
   }
+  if (init.identity.google) {
+    identity_providers.push(new GoogleProvider(init.identity.google));
+  }
+  if (init.identity.oidc) {
+    identity_providers.push(new OidcProvider(init.identity.oidc));
+  }
   if (init.identity.custom) {
     identity_providers.push(...init.identity.custom);
   }
   if (identity_providers.length === 0) {
     throw new Error(
-      'vouch(): identity must include at least one provider (e.g. identity.github or identity.custom)',
+      'vouch(): identity must include at least one provider (e.g. identity.github, identity.google, identity.oidc, or identity.custom)',
     );
   }
 

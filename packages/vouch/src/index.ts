@@ -158,6 +158,8 @@ export type {
   VouchInit,
   VouchInstance,
   VouchExpress,
+  VouchLifecycle,
+  VouchRequestContext,
   DatabaseInit,
   RedisInit,
   KmsInit,
@@ -165,3 +167,17 @@ export type {
   InMemoryKmsInit,
   IdentityInit,
 } from './factory.js';
+
+// Identity providers — instances are usually built by the factory, but
+// exporting them lets power users wire `identity.custom` with extra
+// configuration or compose a custom IdP.
+export { GitHubAppProvider } from './identity/github-app/browser-flow.js';
+export type { GitHubAppProviderConfig } from './identity/github-app/browser-flow.js';
+export { GoogleProvider } from './identity/google/provider.js';
+export type { GoogleProviderConfig } from './identity/google/provider.js';
+export { OidcProvider } from './identity/oidc/provider.js';
+export type {
+  OidcProviderConfig,
+  OidcEndpoints,
+  Fetcher as OidcFetcher,
+} from './identity/oidc/provider.js';
