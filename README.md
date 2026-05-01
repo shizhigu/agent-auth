@@ -40,7 +40,7 @@
 | Reference end-to-end demo (SaaS + agent) | **Yes** — runnable in `apps/demo/` (Postgres + Redis via docker compose, no AWS / GitHub OAuth needed) | v0.2 |
 | Docs site (`vouch.dev`) | **No** — README + SPEC only | v0.2 |
 | Multi-provider identity (Google / GitLab / generic OIDC) | **No** — GitHub-only at v0.1 | v0.3 |
-| Migration runner (`vouch migrate up`) | **No** — apply `packages/vouch/schema/migrations/*.sql` manually | v0.3 |
+| Migration runner (`vouch migrate up`) | **Yes** — `@vouch/cli` ships forward + rollback + status; tracking table auto-created | shipped |
 | Vouch Cloud (hosted + admin dashboard) | **No** — self-host only | v1.0 |
 
 If you want to **try it today**, see [Quick start](#quick-start). If you want to **build production on top of it**, the realistic ETA is **v0.2 (~4 weeks)** when DX completes — the server-side core is solid, but the rough edges are real.
@@ -133,14 +133,12 @@ npm install /path/to/agent-auth
 
 ### Apply the database schema
 
-A real migration runner ships with v0.3 (`vouch migrate up`). Until then, apply the SQL files manually:
-
 ```bash
-for f in packages/vouch/schema/migrations/0*.sql; do
-  case "$f" in *.down.sql) continue;; esac
-  psql "$DATABASE_URL" -f "$f"
-done
+npm install -D @vouch/cli
+DATABASE_URL=postgres://… npx vouch migrate up
 ```
+
+`vouch migrate status` shows pending vs applied; `vouch migrate down --steps 1` rolls back. Tracking lives in a `vouch_migrations` table the CLI creates automatically. See [`packages/cli/README.md`](packages/cli/README.md) for the full reference.
 
 ### Wire it up (Express)
 
@@ -345,7 +343,7 @@ The server-side engine is done; the next milestones are about **developer experi
 
 - [ ] Generic OIDC provider — works against any standards-compliant IdP
 - [ ] Built-in providers: Google Workspace, GitLab, Microsoft Entra
-- [ ] **`vouch migrate up`** — first-class migration runner (replaces manual `psql -f`)
+- [x] **`vouch migrate up`** — first-class migration runner (`@vouch/cli`); ships forward + rollback + status, transactional with auto tracking table
 - [ ] Type inference end-to-end (server-defined scopes flow into agent-side `useAgent()` hook)
 
 ### v1.0 — Vouch Cloud
