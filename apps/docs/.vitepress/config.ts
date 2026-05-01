@@ -7,14 +7,20 @@ export default defineConfig({
   lastUpdated: true,
 
   head: [
-    ['meta', { name: 'theme-color', content: '#3178c6' }],
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
+    ['meta', { name: 'theme-color', content: '#5B6CFF' }],
     ['meta', { property: 'og:title', content: 'Vouch — identity infrastructure for AI agents' }],
     ['meta', { property: 'og:description', content: 'Drop-in auth rail that lives next to your existing human auth. Open-source today, hosted Cloud on the way.' }],
     ['meta', { property: 'og:type', content: 'website' }],
+    ['meta', { property: 'og:image', content: '/og-image.svg' }],
+    ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
+    ['meta', { name: 'twitter:title', content: 'Vouch — identity infrastructure for AI agents' }],
+    ['meta', { name: 'twitter:description', content: 'Drop-in auth rail that lives next to your existing human auth.' }],
+    ['meta', { name: 'twitter:image', content: '/og-image.svg' }],
   ],
 
   themeConfig: {
-    logo: undefined,
+    logo: '/logo-mark.svg',
     siteTitle: 'Vouch',
 
     nav: [

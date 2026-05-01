@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" role="img" aria-label="Vouch">
+  <title>Vouch</title>
+  <!-- Hex badge — denotes "seal of vouching". Stroke uses currentColor so
+       consumers can theme the mark by setting CSS color. -->
+  <path d="M12 2L21 7V17L12 22L3 17V7L12 2Z" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"/>
+  <!-- Check — verified, with shape that subtly recalls the "V" initial. -->
+  <path d="M7.5 11.5L11 15L16.5 8" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

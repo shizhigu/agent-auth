@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" role="img" aria-label="Vouch">
+  <title>Vouch</title>
+  <path d="M12 2L21 7V17L12 22L3 17V7L12 2Z" stroke="#5B6CFF" stroke-width="1.75" stroke-linejoin="round"/>
+  <path d="M7.5 11.5L11 15L16.5 8" stroke="#5B6CFF" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

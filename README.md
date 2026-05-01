@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/brand/logo-mark-color.svg" alt="" width="64" height="64">
+
 # Vouch
 
 **Identity infrastructure for AI agents.**

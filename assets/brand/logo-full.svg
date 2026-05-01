@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="48" viewBox="0 0 180 48" fill="none" role="img" aria-label="Vouch">
+  <title>Vouch</title>
+  <!-- Mark, scaled + offset to align with wordmark baseline. -->
+  <g transform="translate(4, 8)">
+    <path d="M16 2L29.5 8.5V23.5L16 30L2.5 23.5V8.5L16 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M9 14.5L13.5 19L21 11" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <!-- Wordmark — system font stack for cross-platform consistency. -->
+  <text
+    x="48"
+    y="33"
+    fill="currentColor"
+    font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+    font-size="26"
+    font-weight="700"
+    letter-spacing="-0.02em"
+  >Vouch</text>
+</svg>
