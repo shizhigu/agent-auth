@@ -5,9 +5,9 @@
     "noEmit": true,
     "skipLibCheck": true,
     "paths": {
-      "agent-auth": ["../packages/vouch/src/index.ts"],
-      "agent-auth/hono": ["../packages/vouch/src/hono.ts"],
-      "agent-auth/identity/github-app/browser-flow.js": [
+      "@vouch/server": ["../packages/vouch/src/index.ts"],
+      "@vouch/server/hono": ["../packages/vouch/src/hono.ts"],
+      "@vouch/server/identity/github-app/browser-flow.js": [
         "../packages/vouch/src/identity/github-app/browser-flow.ts"
       ]
     }

@@ -6,8 +6,8 @@ Vouch's Hono adapter mirrors the Express one but runs on Bun, Cloudflare Workers
 
 ```ts
 import { Hono } from 'hono';
-import { vouch } from 'agent-auth';
-import { honoRoutes, honoAppMiddleware } from 'agent-auth/hono';
+import { vouch } from '@vouch/server';
+import { honoRoutes, honoAppMiddleware } from '@vouch/server/hono';
 
 const auth = await vouch({ /* same config as Express */ });
 
@@ -26,7 +26,7 @@ export default app;
 ## Type augmentation
 
 ```ts
-import type { AgentContext } from 'agent-auth';
+import type { AgentContext } from '@vouch/server';
 
 declare module 'hono' {
   interface ContextVariableMap {

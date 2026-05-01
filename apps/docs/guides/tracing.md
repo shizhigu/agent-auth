@@ -12,7 +12,7 @@ Vouch ships an opt-in OTel-compatible tracing wrapper. The lib never imports `@o
 
 ```ts
 import { trace } from '@opentelemetry/api';
-import { vouch } from 'agent-auth';
+import { vouch } from '@vouch/server';
 
 const auth = await vouch({
   // ... database / redis / kms / identity / internal_secret ...
@@ -96,7 +96,7 @@ The lib's `auth.lifecycle.*` calls are passthrough — zero overhead, no instrum
 If you want to instrument an already-built lifecycle (e.g. you constructed it manually or you're decorating a custom adapter), use the named helper:
 
 ```ts
-import { instrumentLifecycle } from 'agent-auth';
+import { instrumentLifecycle } from '@vouch/server';
 
 const wrapped = instrumentLifecycle(auth.lifecycle, {
   tracer: trace.getTracer('vouch'),

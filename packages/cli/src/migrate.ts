@@ -254,18 +254,19 @@ export function createMigrateRunner(cfg: MigrateRunnerConfig): MigrateRunner {
 }
 
 /**
- * Resolve the bundled schema directory shipped with the `agent-auth` lib.
- * Uses node_modules resolution so this works whether the CLI is installed
- * via npm, linked from a workspace, or run from a fresh checkout.
+ * Resolve the bundled schema directory shipped with the `@vouch/server`
+ * lib. Uses node_modules resolution so this works whether the CLI is
+ * installed via npm, linked from a workspace, or run from a fresh
+ * checkout.
  */
 export function resolveBundledSchemaDir(): string {
   // Defer the import so `createMigrateRunner` callers that pass their own
-  // schema_dir (e.g. tests) don't have to have agent-auth installed.
+  // schema_dir (e.g. tests) don't have to have @vouch/server installed.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { createRequire } = require('node:module') as typeof import('node:module');
   const { dirname, join } = require('node:path') as typeof import('node:path');
   const req = createRequire(import.meta.url);
-  const pkgPath = req.resolve('agent-auth/package.json');
+  const pkgPath = req.resolve('@vouch/server/package.json');
   return join(dirname(pkgPath), 'schema', 'migrations');
 }
 

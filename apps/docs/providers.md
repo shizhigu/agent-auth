@@ -5,7 +5,7 @@ Vouch ships three providers out of the box, plus an escape hatch for anything el
 ## Pick one (or more — they're additive)
 
 ```ts
-import { vouch } from 'agent-auth';
+import { vouch } from '@vouch/server';
 
 const auth = await vouch({
   // ... database / redis / kms / internal_secret ...
@@ -104,7 +104,7 @@ identity: {
 `identity.oidc` is single-shot. To wire multiple OIDC providers (e.g. Okta + Auth0 in one SaaS), construct them via the exported class and pass them to `identity.custom`:
 
 ```ts
-import { vouch, OidcProvider } from 'agent-auth';
+import { vouch, OidcProvider } from '@vouch/server';
 
 const okta = new OidcProvider({
   name: 'okta',
@@ -141,7 +141,7 @@ The generic OIDC provider trusts the `userinfo` response over HTTPS rather than 
 Any class that implements `IdentityProvider` from `agent-auth` works:
 
 ```ts
-import type { IdentityProvider, AttestationContext, Attestation } from 'agent-auth';
+import type { IdentityProvider, AttestationContext, Attestation } from '@vouch/server';
 
 class SamlBridgeProvider implements IdentityProvider {
   readonly name = 'corp-saml';

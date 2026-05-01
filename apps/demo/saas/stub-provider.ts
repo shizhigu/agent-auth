@@ -22,7 +22,7 @@ import type {
   Attestation,
   ProviderInput,
   BeginRegistrationResult,
-} from 'agent-auth';
+} from '@vouch/server';
 
 export interface DemoStubProviderConfig {
   /** Where /__demo/auto-approve lives on the SaaS, e.g. http://localhost:3000/__demo/auto-approve */

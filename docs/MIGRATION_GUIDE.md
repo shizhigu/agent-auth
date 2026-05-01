@@ -1,4 +1,4 @@
-# agent-auth migration guide
+# Vouch (`@vouch/server`) migration guide
 
 This guide walks SaaS adopters through what changed between
 versions, what's required to upgrade, and what's optional but
@@ -50,7 +50,7 @@ If your SaaS configures `recover_account.owner_approval`, the
 key when the owner approves:
 
 ```ts
-import { recoverAccountConfirm, AwsKmsAdapter, ... } from 'agent-auth';
+import { recoverAccountConfirm, AwsKmsAdapter, ... } from '@vouch/server';
 
 await recoverAccountConfirm(input, {
   postgres: pg,
@@ -144,7 +144,7 @@ finalize path needs to run; otherwise omittable. See §2 above.
 - Sealed-box format (libsodium `crypto_box_seal`): same.
 - Audit-log columns: same (the canonical bytes formula is identical;
   only the per-day seed window changed in 0005).
-- Public types exported from `agent-auth`: additive only.
+- Public types exported from `@vouch/server`: additive only.
 - Peer deps: same (pg, ioredis, libsodium, @aws-sdk/client-kms,
   @aws-sdk/client-s3 — all already pinned in v0.1).
 

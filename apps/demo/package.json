@@ -11,7 +11,7 @@
     "demo": "echo 'Run `npm run saas` in one terminal and `npm run agent` in another.'"
   },
   "dependencies": {
-    "agent-auth": "*",
+    "@vouch/server": "*",
     "@aws-sdk/client-kms": "^3.600.0",
     "express": "^4.19.2",
     "ioredis": "^5.4.1",

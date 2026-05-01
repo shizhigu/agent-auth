@@ -8,8 +8,8 @@
  */
 
 import { Hono } from 'hono';
-import { vouch, type AgentContext } from 'agent-auth';
-import { honoRoutes, honoAppMiddleware } from 'agent-auth/hono';
+import { vouch, type AgentContext } from '@vouch/server';
+import { honoRoutes, honoAppMiddleware } from '@vouch/server/hono';
 
 // ----- Type augmentation: c.get('agent') is typed as AgentContext.
 declare module 'hono' {

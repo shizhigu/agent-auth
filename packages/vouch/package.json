@@ -1,6 +1,6 @@
 {
-  "name": "agent-auth",
-  "version": "0.2.0-dev",
+  "name": "@vouch/server",
+  "version": "0.2.0",
   "description": "Vouch — identity infrastructure for AI agents. Drop-in auth rail that sits next to your existing human auth, never replaces it.",
   "keywords": [
     "ai-agents",
@@ -63,9 +63,7 @@
   "files": [
     "dist",
     "schema",
-    "scripts/post-promotion-reset.sh",
-    "README.md",
-    "SPEC.md"
+    "README.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

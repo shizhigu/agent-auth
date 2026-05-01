@@ -7,7 +7,7 @@
  * Drop at: app/api/agent/v1/whoami/route.ts
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { vouch, type VouchInstance } from 'agent-auth';
+import { vouch, type VouchInstance } from '@vouch/server';
 
 let _auth: Promise<VouchInstance> | null = null;
 function getAuth() {

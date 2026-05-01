@@ -15,14 +15,14 @@
  * cleanest fit; you wire each route as a thin Web-Request adapter.
  *
  * Required deps (install in your Next.js app):
- *   npm install agent-auth pg ioredis @aws-sdk/client-kms libsodium-wrappers
+ *   npm install @vouch/server pg ioredis @aws-sdk/client-kms libsodium-wrappers
  *
  * Type imports below assume `next` is installed (peer dep of any
  * Next.js app).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { vouch, type VouchInstance } from 'agent-auth';
+import { vouch, type VouchInstance } from '@vouch/server';
 
 // --------------------------------------------------------------------------
 // 1. Build a single Vouch instance and reuse it across requests.

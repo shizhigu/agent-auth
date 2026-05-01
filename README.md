@@ -7,7 +7,7 @@
 **Identity infrastructure for AI agents.**
 **Drop it next to your existing human auth — never replaces it.**
 
-<sub>The open-source engine ships as the `agent-auth` package on npm (v0.2). Hosted Vouch Cloud is on the [roadmap](#roadmap) for v1.0.</sub>
+<sub>The open-source engine ships as `@vouch/server` on npm. Hosted Vouch Cloud is on the [roadmap](#roadmap) for v1.0.</sub>
 
 [![CI](https://github.com/shizhigu/agent-auth/actions/workflows/ci.yml/badge.svg)](https://github.com/shizhigu/agent-auth/actions/workflows/ci.yml)
 [![Security](https://github.com/shizhigu/agent-auth/actions/workflows/security.yml/badge.svg)](https://github.com/shizhigu/agent-auth/actions/workflows/security.yml)
@@ -36,7 +36,7 @@
 
 | | Status | Plan |
 |---|---|---|
-| Published on npm (`agent-auth` package) | **No** — install today via `git clone && npm run build` | v0.2 |
+| Published on npm (`@vouch/server`) | **No** — names reserved (`agent-auth` was taken), publish pending user OK | next |
 | Agent-side SDK (`@vouch/client`) | **Dev preview** — lives in [`packages/client/`](packages/client/) (not yet on npm) | v0.2 |
 | CLI scaffolder (`npx create-vouch-app`) | **Yes** — Express SaaS or Node agent in one command, ready to run | shipped |
 | Reference end-to-end demo (SaaS + agent) | **Yes** — runnable in `apps/demo/` (Postgres + Redis via docker compose, no AWS / GitHub OAuth needed) | v0.2 |

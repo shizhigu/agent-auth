@@ -100,7 +100,7 @@ This separation is a deliberate confused-deputy guard: a SaaS that authorizes on
 ```
 agent-auth/                    ← repo root (npm workspaces)
 ├── packages/
-│   ├── vouch/                 ← server core (npm: agent-auth)
+│   ├── vouch/                 ← server core (npm: @vouch/server)
 │   │   ├── src/factory.ts     vouch() + lifecycle dispatcher
 │   │   ├── src/middleware/    validate-key + Express + Hono adapters
 │   │   ├── src/storage/       Postgres + Redis + KMS adapters

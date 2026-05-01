@@ -6,7 +6,7 @@
  * latter belongs to your existing human auth lib and confusing them is a
  * confused-deputy footgun (RT-9).
  */
-import type { AgentContext } from 'agent-auth';
+import type { AgentContext } from '@vouch/server';
 
 declare module 'express-serve-static-core' {
   interface Request {

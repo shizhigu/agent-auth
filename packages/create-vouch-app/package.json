@@ -1,6 +1,6 @@
 {
   "name": "create-vouch-app",
-  "version": "0.2.0-dev",
+  "version": "0.2.0",
   "description": "Scaffolder for Vouch projects. `npx create-vouch-app my-saas` generates a working SaaS or agent template, ready to run.",
   "keywords": [
     "vouch",

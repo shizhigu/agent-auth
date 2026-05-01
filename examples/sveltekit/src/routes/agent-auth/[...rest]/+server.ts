@@ -4,7 +4,7 @@
  * Drop at: src/routes/agent-auth/[...rest]/+server.ts
  *
  * Required deps in your SvelteKit app:
- *   npm install agent-auth pg ioredis @aws-sdk/client-kms libsodium-wrappers
+ *   npm install @vouch/server pg ioredis @aws-sdk/client-kms libsodium-wrappers
  *
  * SvelteKit endpoints receive a Web `Request`/`Response` event, the
  * same shape as Cloudflare Workers — so `auth.lifecycle.*` is the
@@ -12,7 +12,7 @@
  */
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
-import { vouch, type VouchInstance } from 'agent-auth';
+import { vouch, type VouchInstance } from '@vouch/server';
 import { env } from '$env/dynamic/private';
 
 let _auth: Promise<VouchInstance> | null = null;

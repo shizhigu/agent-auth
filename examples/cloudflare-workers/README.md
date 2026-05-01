@@ -11,7 +11,7 @@ your-worker/
 ## Install
 
 ```bash
-npm install agent-auth hono
+npm install @vouch/server hono
 npm install -D wrangler @cloudflare/workers-types
 ```
 

@@ -13,7 +13,7 @@
     "migrate:down": "vouch migrate down --steps 1"
   },
   "dependencies": {
-    "agent-auth": "^0.1.0",
+    "@vouch/server": "^0.2.0",
     "@aws-sdk/client-kms": "^3.600.0",
     "express": "^4.19.2",
     "ioredis": "^5.4.1",

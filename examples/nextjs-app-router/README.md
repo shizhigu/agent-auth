@@ -13,7 +13,7 @@ your-app/
 ## Install
 
 ```bash
-npm install agent-auth pg ioredis @aws-sdk/client-kms libsodium-wrappers
+npm install @vouch/server pg ioredis @aws-sdk/client-kms libsodium-wrappers
 ```
 
 ## Env vars

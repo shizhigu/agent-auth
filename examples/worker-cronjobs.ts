@@ -43,7 +43,7 @@ import {
   IoredisAdapter,
   AwsKmsAdapter,
   AwsS3WormPutter,
-} from 'agent-auth';
+} from '@vouch/server';
 
 // ----- 1. Adapters (same as the API process) -----------------------------
 

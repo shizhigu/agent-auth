@@ -9,7 +9,7 @@
  *     (Web Crypto subtle, fetch, URL — all standard).
  *
  * Required deps:
- *   npm install agent-auth hono @vouch/client    # if your worker also acts as an agent
+ *   npm install @vouch/server hono @vouch/client    # if your worker also acts as an agent
  *
  * Storage caveat:
  *   - Postgres: needs a Cloudflare Hyperdrive binding or a HTTP-style
@@ -23,8 +23,8 @@
  */
 
 import { Hono } from 'hono';
-import { vouch, type AgentContext } from 'agent-auth';
-import { honoRoutes, honoAppMiddleware } from 'agent-auth/hono';
+import { vouch, type AgentContext } from '@vouch/server';
+import { honoRoutes, honoAppMiddleware } from '@vouch/server/hono';
 
 declare module 'hono' {
   interface ContextVariableMap {

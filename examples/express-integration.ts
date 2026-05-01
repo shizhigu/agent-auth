@@ -4,7 +4,7 @@
  * Demonstrates the canonical setup with the real lib API (per SPEC §11.4
  * AgentAuthConfig and §6.3 confused-deputy prevention).
  *
- * 5 minutes from `npm install agent-auth express @aws-sdk/client-kms pg ioredis`
+ * 5 minutes from `npm install @vouch/server express @aws-sdk/client-kms pg ioredis`
  * to a SaaS that can validate agent-issued bearer tokens.
  */
 
@@ -22,9 +22,9 @@ import {
   IoredisAdapter,
   AwsKmsAdapter,
   type AgentContext,
-} from 'agent-auth';
+} from '@vouch/server';
 // Optional: example only — your SaaS plugs its own GitHub App provider.
-import { GitHubAppProvider } from 'agent-auth/identity/github-app/browser-flow.js';
+import { GitHubAppProvider } from '@vouch/server/identity/github-app/browser-flow.js';
 
 // ----- Type augmentation (exactly once in your codebase) -------------------
 declare module 'express' {

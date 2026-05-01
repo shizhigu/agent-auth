@@ -1,6 +1,6 @@
 {
   "name": "@vouch/client",
-  "version": "0.2.0-dev",
+  "version": "0.2.0",
   "description": "Vouch — agent-side SDK. Wraps the registration flow (PKCE, sealed-box, polling) and bearer-key handling so an agent can authenticate in 5 lines.",
   "keywords": [
     "vouch",
