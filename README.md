@@ -345,7 +345,7 @@ Per the threat model (`SPEC.md` Part VI), the app role cannot tamper with audit 
 | [`docs/runbooks/INDEX.md`](docs/runbooks/INDEX.md) | RB-1..RB-9 incident playbooks |
 | [`docs/security/OWASP-API-self-review.md`](docs/security/OWASP-API-self-review.md) | OWASP API 2023 mapping |
 | [`audit/`](audit/) | 13 rounds of design-audit history (preserved for rationale) |
-| [`examples/`](examples/) | Express, Hono, and worker-cronjob templates |
+| [`examples/`](examples/) | Express + Hono single-file references; Next.js / SvelteKit / Cloudflare Workers integrations in subdirectories |
 | [`packages/vouch/schema/migrations/`](packages/vouch/schema/migrations/) | Forward + rollback SQL DDL (0001..0006) |
 
 ## Testing

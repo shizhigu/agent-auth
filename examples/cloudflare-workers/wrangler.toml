@@ -1,0 +1,33 @@
+# wrangler.toml — example Cloudflare Workers config for Vouch.
+#
+# Drop into the root of your Worker project alongside worker.ts.
+
+name = "my-vouch-worker"
+main = "worker.ts"
+compatibility_date = "2024-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Postgres via Hyperdrive (recommended). Create the binding in the
+# Cloudflare dashboard, then reference it here:
+#
+# [[hyperdrive]]
+# binding = "HYPERDRIVE"
+# id = "your-hyperdrive-id"
+#
+# Then in worker.ts swap `database: { url: env.DATABASE_URL }` for
+# `database: { url: env.HYPERDRIVE.connectionString }`.
+
+[vars]
+AWS_REGION = "us-east-1"
+PUBLIC_BASE_URL = "https://api.your-app.workers.dev"
+
+# Production secrets (managed via `wrangler secret put`):
+#   AGENT_AUTH_INTERNAL_SECRET
+#   DATABASE_URL
+#   REDIS_URL
+#   GH_CLIENT_ID
+#   GH_CLIENT_SECRET
+#   GH_WEBHOOK_SECRET
+#   GH_APP_PRIVATE_KEY
+#   KMS_PEPPER_ALIAS
+#   KMS_DEVICE_ALIAS
