@@ -6,6 +6,7 @@
     "skipLibCheck": true,
     "paths": {
       "agent-auth": ["../src/index.ts"],
+      "agent-auth/hono": ["../src/hono.ts"],
       "agent-auth/identity/github-app/browser-flow.js": [
         "../src/identity/github-app/browser-flow.ts"
       ]

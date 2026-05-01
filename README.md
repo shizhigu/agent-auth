@@ -189,6 +189,29 @@ app.listen(8080);
 
 That's it — `vouch()` builds Postgres / Redis / KMS adapters, wires the 12 lifecycle routes (`begin-registration`, `callback`, `registration-status`, `rotate-key`, `revoke`, `recover-account*`, `webhooks/:provider`, `healthz`, `well-known`, `list-keys`), handles raw-body parsing for webhook signature verification, and runs `redis.loadScripts()` + `sealedBoxReady()` for you.
 
+### Same wiring on Hono
+
+Vouch ships a Hono adapter for Bun / Cloudflare Workers / Deno deployments. Same `vouch()` call, then:
+
+```ts
+import { Hono } from 'hono';
+import { vouch } from 'agent-auth';
+import { honoRoutes, honoAppMiddleware } from 'agent-auth/hono';
+
+const auth = await vouch({ /* same config as above */ });
+
+const app = new Hono();
+app.route('/agent-auth', honoRoutes(auth));            // lifecycle routes
+app.use('/api/agent/v1/*', honoAppMiddleware(auth));   // protect your API
+
+app.get('/api/agent/v1/whoami', (c) => {
+  const agent = c.get('agent');
+  return c.json({ account_id: agent.account_id, scopes: agent.scopes });
+});
+```
+
+The Hono router is built off the same framework-agnostic `auth.lifecycle` that backs Express, so behavior is identical down to the route bodies and error shapes.
+
 For the **agent side**, use [`@vouch/client`](packages/client/) — 5 lines from `register()` to authenticated `fetch()`:
 
 ```ts

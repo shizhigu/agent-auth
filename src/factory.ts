@@ -64,7 +64,7 @@ import {
   type FailoverConfig,
 } from './config.js';
 import { sealedBoxReady } from './crypto/sealed-box.js';
-import { makeValidateKeyDeps } from './middleware/validate-key.js';
+import { makeValidateKeyDeps, validateKey } from './middleware/validate-key.js';
 import {
   expressMiddleware,
   type ExpressMiddlewareOptions,
@@ -160,6 +160,73 @@ export interface VouchInit {
 // VouchInstance — what the factory returns
 // ---------------------------------------------------------------------------
 
+/**
+ * Per-request context the lifecycle handlers care about. Framework adapters
+ * derive this from their own request type (Express req, Hono Context, etc.).
+ */
+export interface VouchRequestContext {
+  readonly ip_hash: Buffer;
+  readonly user_agent: string;
+}
+
+/**
+ * Framework-agnostic dispatcher. Each function wraps one of the 12 lifecycle
+ * route handlers with deps already bound. Exposed publicly so framework
+ * adapters (e.g. `agent-auth/hono`) and power users that build their own
+ * adapters can call routes directly.
+ *
+ * Webhook handling needs the raw HTTP body (Buffer) for HMAC signature
+ * verification — the framework adapter is responsible for plumbing that
+ * through unmolested.
+ */
+export interface VouchLifecycle {
+  beginRegistration(args: {
+    body: unknown;
+    request_context: VouchRequestContext;
+  }): Promise<Awaited<ReturnType<typeof beginRegistration>>>;
+  callback(args: {
+    input: Parameters<typeof routeCallback>[0];
+    request_context: VouchRequestContext;
+  }): Promise<Awaited<ReturnType<typeof routeCallback>>>;
+  registrationStatus(args: {
+    poll_token: string;
+  }): Promise<Awaited<ReturnType<typeof registrationStatus>>>;
+  recoverAccount(args: {
+    body: unknown;
+    request_context: VouchRequestContext;
+  }): Promise<Awaited<ReturnType<typeof recoverAccount>>>;
+  recoverAccountConfirm(args: {
+    input: Parameters<typeof recoverAccountConfirm>[0];
+  }): Promise<Awaited<ReturnType<typeof recoverAccountConfirm>>>;
+  recoverAccountStatus(args: {
+    poll_token: string;
+  }): Promise<Awaited<ReturnType<typeof recoverAccountStatus>>>;
+  rotateKey(args: {
+    body: unknown;
+    caller: AgentContext;
+    idempotency_key: string;
+  }): Promise<Awaited<ReturnType<typeof rotateKey>>>;
+  revoke(args: {
+    body: unknown;
+    caller: AgentContext;
+    idempotency_key: string;
+  }): Promise<Awaited<ReturnType<typeof revoke>>>;
+  listKeys(args: {
+    caller: AgentContext;
+  }): Promise<Awaited<ReturnType<typeof listKeys>>>;
+  webhook(args: {
+    provider: string;
+    headers: Record<string, string>;
+    raw_body: Buffer;
+  }): Promise<Awaited<ReturnType<typeof handleWebhookRequest>>>;
+  healthz(): Promise<Awaited<ReturnType<typeof healthz>>>;
+  wellKnown(args: {
+    base_url?: string;
+  }): ReturnType<typeof wellKnown>;
+  /** Validate a Bearer token. Returns the AgentContext on success, throws AgentAuthError on failure. */
+  validateBearer(token: string): Promise<AgentContext>;
+}
+
 export interface VouchExpress {
   /**
    * Mount Vouch on an Express app. Wires body parsing + dispatcher in one
@@ -188,6 +255,9 @@ export interface VouchInstance {
     readonly redis: IoredisAdapter;
     readonly kms: KmsAdapter;
   };
+  /** Framework-agnostic dispatcher. Used by the framework adapters; safe to call directly if you're building your own. */
+  readonly lifecycle: VouchLifecycle;
+  /** Express-flavored helpers — middleware + dispatcher + drop-in `mount(app)`. */
   readonly express: VouchExpress;
   shutdown(): Promise<void>;
 }
@@ -278,19 +348,25 @@ export async function vouch(init: VouchInit): Promise<VouchInstance> {
     validation_mode: config.validation.mode,
   };
 
+  // Framework-agnostic lifecycle — used by the express handler below AND by
+  // alternative framework adapters (e.g. agent-auth/hono).
+  const lifecycle: VouchLifecycle = makeLifecycle(dispatcherDeps);
+
   const expressApi: VouchExpress = {
     mount(app, opts) {
       const path = normalizePath(opts?.mount_path ?? mount_path);
-      // 1. Webhooks need raw-body for signature verification.
+      // 1. Webhooks + recover-account-confirm need raw-body for HMAC
+      //    signature verification.
       app.use(`${path}/webhooks`, express.raw({ type: '*/*', limit: '512kb' }));
+      app.use(`${path}/recover-account-confirm`, express.raw({ type: '*/*', limit: '8kb' }));
       // 2. Other lifecycle routes parse JSON.
       app.use(path, express.json({ limit: '4kb' }));
       // 3. Single dispatcher for all sub-paths.
-      app.all(`${path}/*`, makeExpressHandler({ ...dispatcherDeps, mount_path: path }));
+      app.all(`${path}/*`, makeExpressHandler({ lifecycle, validateDeps, mount_path: path, identity_providers }));
     },
     handler(opts) {
       const path = normalizePath(opts?.mount_path ?? mount_path);
-      return makeExpressHandler({ ...dispatcherDeps, mount_path: path });
+      return makeExpressHandler({ lifecycle, validateDeps, mount_path: path, identity_providers });
     },
     middleware(opts) {
       return expressMiddleware(validateDeps, opts);
@@ -300,6 +376,7 @@ export async function vouch(init: VouchInit): Promise<VouchInstance> {
   return {
     config,
     adapters: { postgres, redis, kms },
+    lifecycle,
     express: expressApi,
     async shutdown() {
       await postgres.close().catch(() => undefined);
@@ -309,6 +386,89 @@ export async function vouch(init: VouchInit): Promise<VouchInstance> {
         redisSub.disconnect();
       }
     },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Lifecycle — framework-agnostic dispatcher
+// ---------------------------------------------------------------------------
+
+function makeLifecycle(d: DispatcherDeps): VouchLifecycle {
+  return {
+    beginRegistration: ({ body, request_context }) =>
+      beginRegistration(body, {
+        postgres: d.postgres,
+        identity_providers: d.identity_providers,
+        redirect_uri: d.redirect_uri,
+        audience: d.audience,
+        request_context,
+      }),
+    callback: ({ input, request_context }) =>
+      routeCallback(input, {
+        postgres: d.postgres,
+        kms: d.kms,
+        identity_providers: d.identity_providers,
+        request_context,
+      }),
+    registrationStatus: ({ poll_token }) =>
+      registrationStatus(
+        { poll_token },
+        { postgres: d.postgres, endpoint: 'registration' },
+      ),
+    recoverAccount: ({ body, request_context }) =>
+      recoverAccount(body, {
+        postgres: d.postgres,
+        identity_providers: d.identity_providers,
+        redirect_uri: d.redirect_uri,
+        audience: d.audience,
+        request_context,
+      }),
+    recoverAccountConfirm: ({ input }) =>
+      recoverAccountConfirm(input, {
+        postgres: d.postgres,
+        redis: d.redis,
+        internal_secret: d.internal_secret,
+        kms: d.kms,
+      }),
+    recoverAccountStatus: ({ poll_token }) =>
+      recoverAccountStatus({ poll_token }, { postgres: d.postgres }),
+    rotateKey: ({ body, caller, idempotency_key }) =>
+      rotateKey(body, {
+        postgres: d.postgres,
+        redis: d.redis,
+        kms: d.kms,
+        region: d.region,
+        caller,
+        idempotency_key,
+      }),
+    revoke: ({ body, caller, idempotency_key }) =>
+      revoke(body, {
+        postgres: d.postgres,
+        redis: d.redis,
+        region: d.region,
+        caller,
+        idempotency_key,
+      }),
+    listKeys: ({ caller }) => listKeys({ postgres: d.postgres, caller }),
+    webhook: ({ provider, headers, raw_body }) =>
+      handleWebhookRequest(
+        { provider, headers, raw_body },
+        {
+          postgres: d.postgres,
+          redis: d.redis,
+          identity_providers: d.identity_providers,
+          region: d.region,
+          onAlert: d.onAlert,
+        },
+      ),
+    healthz: () => healthz({ postgres: d.postgres, redis: d.redis }),
+    wellKnown: ({ base_url } = {}) =>
+      wellKnown({
+        base_url: base_url ?? d.base_url ?? 'http://localhost',
+        identity_providers: d.identity_providers,
+        barrier_mode: d.validation_mode,
+      }),
+    validateBearer: (token: string) => validateKey(token, d.validateDeps),
   };
 }
 
@@ -332,8 +492,16 @@ interface DispatcherDeps {
   validation_mode: ResolvedConfig['validation']['mode'];
 }
 
-function makeExpressHandler(d: DispatcherDeps): RequestHandler {
+interface ExpressHandlerDeps {
+  mount_path: string;
+  lifecycle: VouchLifecycle;
+  validateDeps: ReturnType<typeof makeValidateKeyDeps>;
+  identity_providers: IdentityProvider[];
+}
+
+function makeExpressHandler(d: ExpressHandlerDeps): RequestHandler {
   const middleware = expressMiddleware(d.validateDeps);
+  const lc = d.lifecycle;
   return async (req: Request, res: Response, next: NextFunction) => {
     if (!req.path.startsWith(d.mount_path)) return next();
     const subpath = req.path.slice(d.mount_path.length) || '/';
@@ -342,83 +510,56 @@ function makeExpressHandler(d: DispatcherDeps): RequestHandler {
     try {
       // ---------- Public lifecycle ----------
       if (subpath === '/begin-registration' && req.method === 'POST') {
-        const out = await beginRegistration(req.body, {
-          postgres: d.postgres,
-          identity_providers: d.identity_providers,
-          redirect_uri: d.redirect_uri,
-          audience: d.audience,
-          request_context: ctx,
-        });
-        return void res.json(out);
+        return void res.json(await lc.beginRegistration({ body: req.body, request_context: ctx }));
       }
       if (subpath === '/callback' && req.method === 'GET') {
         const provider =
           (typeof req.query.provider === 'string' ? req.query.provider : undefined) ??
           d.identity_providers[0]?.name ??
           '';
-        const callbackInput: Parameters<typeof routeCallback>[0] = {
+        const input: Parameters<typeof routeCallback>[0] = {
           provider,
           state: String(req.query.state ?? ''),
           code: String(req.query.code ?? ''),
+          ...(typeof req.query.error === 'string' ? { error: req.query.error } : {}),
+          ...(typeof req.query.error_description === 'string'
+            ? { error_description: req.query.error_description }
+            : {}),
         };
-        if (typeof req.query.error === 'string') {
-          (callbackInput as { error?: string }).error = req.query.error;
-        }
-        if (typeof req.query.error_description === 'string') {
-          (callbackInput as { error_description?: string }).error_description = req.query.error_description;
-        }
-        const out = await routeCallback(callbackInput, {
-          postgres: d.postgres,
-          kms: d.kms,
-          identity_providers: d.identity_providers,
-          request_context: ctx,
-        });
-        return void res.json(out);
+        return void res.json(await lc.callback({ input, request_context: ctx }));
       }
       if (subpath === '/registration-status' && req.method === 'GET') {
-        const out = await registrationStatus(
-          { poll_token: String(req.query.poll_token ?? '') },
-          { postgres: d.postgres, endpoint: 'registration' },
+        return void res.json(
+          await lc.registrationStatus({ poll_token: String(req.query.poll_token ?? '') }),
         );
-        return void res.json(out);
       }
       if (subpath === '/recover-account' && req.method === 'POST') {
-        const out = await recoverAccount(req.body, {
-          postgres: d.postgres,
-          identity_providers: d.identity_providers,
-          redirect_uri: d.redirect_uri,
-          audience: d.audience,
-          request_context: ctx,
-        });
-        return void res.json(out);
+        return void res.json(await lc.recoverAccount({ body: req.body, request_context: ctx }));
       }
-      if (subpath === '/recover-account-confirm' && req.method === 'POST') {
-        const out = await recoverAccountConfirm(req.body, {
-          postgres: d.postgres,
-          redis: d.redis,
-          internal_secret: d.internal_secret,
-          kms: d.kms,
-        });
-        return void res.json(out);
+      if (subpath.startsWith('/recover-account-confirm/') && req.method === 'POST') {
+        const approval_url_token = subpath.slice('/recover-account-confirm/'.length);
+        const headers: Record<string, string | string[] | undefined> = {};
+        for (const [k, v] of Object.entries(req.headers)) headers[k.toLowerCase()] = v;
+        const raw_body = req.body instanceof Buffer ? req.body : Buffer.from(JSON.stringify(req.body ?? {}));
+        return void res.json(
+          await lc.recoverAccountConfirm({
+            input: { approval_url_token, path: req.path, method: req.method, headers, raw_body },
+          }),
+        );
       }
       if (subpath === '/recover-account-status' && req.method === 'GET') {
-        const out = await recoverAccountStatus(
-          { poll_token: String(req.query.poll_token ?? '') },
-          { postgres: d.postgres },
+        return void res.json(
+          await lc.recoverAccountStatus({ poll_token: String(req.query.poll_token ?? '') }),
         );
-        return void res.json(out);
       }
       if (subpath === '/healthz' && req.method === 'GET') {
-        const out = await healthz({ postgres: d.postgres, redis: d.redis });
+        const out = await lc.healthz();
         return void res.status(out.http_status).json(out.body);
       }
       if (subpath === '/well-known' && req.method === 'GET') {
-        const out = wellKnown({
-          base_url: d.base_url || `${req.protocol}://${req.get('host') ?? 'localhost'}`,
-          identity_providers: d.identity_providers,
-          barrier_mode: d.validation_mode,
-        });
-        return void res.json(out);
+        return void res.json(
+          lc.wellKnown({ base_url: `${req.protocol}://${req.get('host') ?? 'localhost'}` }),
+        );
       }
       // ---------- Webhooks (raw body) ----------
       if (subpath.startsWith('/webhooks/') && req.method === 'POST') {
@@ -428,17 +569,7 @@ function makeExpressHandler(d: DispatcherDeps): RequestHandler {
         for (const [k, v] of Object.entries(req.headers)) {
           headers[k.toLowerCase()] = Array.isArray(v) ? v.join(', ') : String(v ?? '');
         }
-        const out = await handleWebhookRequest(
-          { provider, headers, raw_body: body },
-          {
-            postgres: d.postgres,
-            redis: d.redis,
-            identity_providers: d.identity_providers,
-            region: d.region,
-            onAlert: d.onAlert,
-          },
-        );
-        return void res.json(out);
+        return void res.json(await lc.webhook({ provider, headers, raw_body: body }));
       }
       // ---------- Authenticated agent-management ----------
       if (
@@ -446,42 +577,21 @@ function makeExpressHandler(d: DispatcherDeps): RequestHandler {
         (subpath === '/revoke' && req.method === 'POST') ||
         (subpath === '/list-keys' && req.method === 'GET')
       ) {
-        // Run validate-key middleware to populate req.agent.
         const proceed = await runMiddleware(middleware, req, res);
         if (!proceed) return;
         const agent = (req as Request & { agent?: AgentContext }).agent;
-        if (!agent) {
-          throw new AgentAuthError(401, 'invalid_key');
-        }
+        if (!agent) throw new AgentAuthError(401, 'invalid_key');
+        const idempotency_key = String(req.headers['idempotency-key'] ?? '');
         if (subpath === '/rotate-key') {
-          const idempotencyKey = String(req.headers['idempotency-key'] ?? '');
-          const out = await rotateKey(req.body, {
-            postgres: d.postgres,
-            redis: d.redis,
-            kms: d.kms,
-            region: d.region,
-            caller: agent,
-            idempotency_key: idempotencyKey,
-          });
-          return void res.json(out);
+          return void res.json(await lc.rotateKey({ body: req.body, caller: agent, idempotency_key }));
         }
         if (subpath === '/revoke') {
-          const idempotencyKey = String(req.headers['idempotency-key'] ?? '');
-          const out = await revoke(req.body, {
-            postgres: d.postgres,
-            redis: d.redis,
-            region: d.region,
-            caller: agent,
-            idempotency_key: idempotencyKey,
-          });
-          return void res.json(out);
+          return void res.json(await lc.revoke({ body: req.body, caller: agent, idempotency_key }));
         }
         if (subpath === '/list-keys') {
-          const out = await listKeys({ postgres: d.postgres, caller: agent });
-          return void res.json(out);
+          return void res.json(await lc.listKeys({ caller: agent }));
         }
       }
-      // No match — pass through.
       return next();
     } catch (e) {
       next(e);

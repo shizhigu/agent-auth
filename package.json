@@ -48,8 +48,8 @@
       "import": "./dist/middleware/express-adapter.js"
     },
     "./hono": {
-      "types": "./dist/middleware/hono-adapter.d.ts",
-      "import": "./dist/middleware/hono-adapter.js"
+      "types": "./dist/hono.d.ts",
+      "import": "./dist/hono.js"
     },
     "./*.js": {
       "types": "./dist/*.d.ts",

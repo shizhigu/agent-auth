@@ -1,100 +1,64 @@
 /**
- * agent-auth — Hono integration example.
+ * Vouch — Hono integration example.
  *
- * Hono is the recommended choice for Cloudflare Workers / Bun-style
- * deployments; the lib's `honoMiddleware` follows the same surface as the
- * Express adapter (req.agent equivalent: `c.get('agent')`).
+ * Recommended on Cloudflare Workers / Bun / Deno deployments. The shape
+ * mirrors `express-integration.ts`: build the auth instance with `vouch()`,
+ * mount lifecycle routes with `honoRoutes()`, and protect API routes with
+ * `honoAppMiddleware()`.
  */
 
 import { Hono } from 'hono';
-import { Pool } from 'pg';
-import { Redis } from 'ioredis';
-import { KMSClient } from '@aws-sdk/client-kms';
+import { vouch, type AgentContext } from 'agent-auth';
+import { honoRoutes, honoAppMiddleware } from 'agent-auth/hono';
 
-import {
-  resolveConfig,
-  honoMiddleware,
-  makeValidateKeyDeps,
-  PostgresAdapter,
-  IoredisAdapter,
-  AwsKmsAdapter,
-  type AgentContext,
-} from 'agent-auth';
-import { GitHubAppProvider } from 'agent-auth/identity/github-app/browser-flow.js';
-
-// ----- Type augmentation (exactly once) -----------------------------------
+// ----- Type augmentation: c.get('agent') is typed as AgentContext.
 declare module 'hono' {
   interface ContextVariableMap {
     agent: AgentContext;
   }
 }
 
-// ----- 1. Build adapters (same as Express example) ------------------------
-const pg = new PostgresAdapter({
-  pool: { connectionString: process.env.DATABASE_URL! },
-  role: 'agent_auth_app',
-});
-const redisClient = new Redis(process.env.REDIS_URL!);
-const redisSub = new Redis(process.env.REDIS_URL!);
-const redis = new IoredisAdapter({ client: redisClient, subscriber: redisSub });
-await redis.loadScripts();
-const kms = new AwsKmsAdapter({
-  client: new KMSClient({ region: 'us-east-1' }),
-  pepper_key_alias: 'alias/agent-auth-pepper',
-  device_key_alias: 'alias/agent-auth-device-flow',
-  current_version: 1,
-  pepperFetcher: async () => Buffer.alloc(32, 0),
-});
-
-// ----- 2. Resolve config --------------------------------------------------
-const config = resolveConfig({
-  internal_secret: Buffer.from(process.env.AGENT_AUTH_INTERNAL_SECRET!, 'base64'),
-  identity_providers: [
-    new GitHubAppProvider({
+// ----- 1. Build the auth instance from a flat config.
+const auth = await vouch({
+  database: { url: process.env.DATABASE_URL! },
+  redis: { url: process.env.REDIS_URL! },
+  kms: {
+    provider: 'aws',
+    region: 'us-east-1',
+    pepper_alias: 'alias/vouch-pepper',
+    device_alias: 'alias/vouch-device-flow',
+    pepperFetcher: async () => Buffer.alloc(32, 0), // your KMS read here
+  },
+  identity: {
+    github: {
       client_id: process.env.GH_CLIENT_ID!,
       client_secret: process.env.GH_CLIENT_SECRET!,
       webhook_secret: process.env.GH_WEBHOOK_SECRET!,
-    }),
-  ],
-  storage: { postgres: pg, redis, kms },
+      app_private_key_pem: process.env.GH_APP_PRIVATE_KEY!,
+    },
+  },
+  internal_secret: process.env.AGENT_AUTH_INTERNAL_SECRET!, // base64 string
+  base_url: process.env.PUBLIC_BASE_URL!,
 });
 
-// ----- 3. Build the middleware --------------------------------------------
-const deps = makeValidateKeyDeps(config);
-const agentAuth = honoMiddleware(deps, {
-  docs_url_base: 'https://my-saas.com/docs/agent-auth/errors',
-});
-
-// ----- 4. Wire the Hono app -----------------------------------------------
+// ----- 2. Wire the Hono app.
 const app = new Hono();
 
-// Global error handler — Hono's onError is where AgentAuthError thrown from
-// inside route handlers (e.g. agent.require_scope()) lands. Translate to
-// the §10.3 wire shape.
-app.onError((err, c) => {
-  if (err && typeof err === 'object' && 'code' in err && 'status' in err) {
-    const e = err as { status: number; code: string; message?: string };
-    return c.json(
-      { error: { code: e.code, message: e.message ?? e.code } },
-      // hono types: status is a numeric union — cast as needed.
-      e.status as 200,
-    );
-  }
-  return c.json({ error: { code: 'internal_error', message: 'unexpected' } }, 500);
-});
-
-// Existing human-auth routes go here — untouched.
+// Existing human-auth routes are untouched.
 // app.use('/api/v1/*', humanAuthMiddleware());
 
-// Protected agent routes:
-app.use('/api/agent/v1/*', agentAuth);
+// Mount Vouch's 12 lifecycle routes under /agent-auth.
+app.route('/agent-auth', honoRoutes(auth));
 
-app.get('/api/agent/v1/data', (c) => {
+// Protect the agent-facing API surface with the validate-key middleware.
+app.use('/api/agent/v1/*', honoAppMiddleware(auth));
+
+app.get('/api/agent/v1/whoami', (c) => {
   const agent = c.get('agent');
-  agent.require_scope('read');
   return c.json({
     account_id: agent.account_id,
     key_id: agent.key_id,
+    scopes: agent.scopes,
     tier: agent.tier,
   });
 });
@@ -110,5 +74,10 @@ app.post('/api/agent/v1/expensive', (c) => {
   }
   return c.json({ status: 'ok' });
 });
+
+// ----- 3. Serve.
+// Node:        `import { serve } from '@hono/node-server'; serve({ fetch: app.fetch, port: 8080 });`
+// Cloudflare:  `export default app;`
+// Bun:         `export default { fetch: app.fetch, port: 8080 };`
 
 export default app;
