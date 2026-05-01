@@ -36,7 +36,7 @@
 |---|---|---|
 | Published on npm (`agent-auth` package) | **No** — install today via `git clone && npm run build` | v0.2 |
 | Agent-side SDK (`@vouch/client`) | **Dev preview** — lives in [`packages/client/`](packages/client/) (not yet on npm) | v0.2 |
-| CLI scaffolder (`npx create-vouch-app`) | **No** | v0.2 |
+| CLI scaffolder (`npx create-vouch-app`) | **Yes** — Express SaaS or Node agent in one command, ready to run | shipped |
 | Reference end-to-end demo (SaaS + agent) | **Yes** — runnable in `apps/demo/` (Postgres + Redis via docker compose, no AWS / GitHub OAuth needed) | v0.2 |
 | Docs site (`vouch.dev`) | **No** — README + SPEC only | v0.2 |
 | Multi-provider identity (Google / GitLab / generic OIDC) | **No** — GitHub-only at v0.1 | v0.3 |
@@ -119,9 +119,23 @@ Vouch is **complementary** to existing auth tools, not a competitor. It plugs a 
 
 ## Quick start
 
-> **Heads up** — `agent-auth` is not on npm yet. Install today is from source; v0.2 will publish.
+> **Heads up** — packages aren't on npm yet. Until v0.2 publishes, scaffold from this repo by passing `--template-dir` to `create-vouch-app` or install via `file:` link.
 
-### Install (today, from source)
+### One command (when published)
+
+```bash
+npx create-vouch-app my-saas
+cd my-saas
+cp .env.example .env
+docker compose up -d
+npx vouch migrate up
+npm install
+npm run dev
+```
+
+That's it — `create-vouch-app` writes a working Express SaaS template, `vouch migrate up` applies the schema, `npm run dev` starts the server with hot reload. See [`packages/create-vouch-app`](packages/create-vouch-app/) for templates (`saas-express`, `agent`).
+
+### Install from source (today, pre-npm-publish)
 
 ```bash
 git clone https://github.com/shizhigu/agent-auth.git
@@ -332,7 +346,7 @@ The server-side engine is done; the next milestones are about **developer experi
 - [ ] **`agent-auth` published on npm** — currently dev-only
 - [x] **`@vouch/client` dev preview** — agent-side SDK lives in [`packages/client/`](packages/client/); 5-line `register()` happy path; auto-rotation deferred to v0.3
 - [ ] **`@vouch/client` published on npm**
-- [ ] **`npx create-vouch-app`** — scaffolder with SaaS + agent templates ready to run
+- [x] **`npx create-vouch-app`** — scaffolder; templates: `saas-express` (default) and `agent`
 - [x] **Reference end-to-end demo** — see [`apps/demo/`](apps/demo/) (SaaS + agent runnable via `docker compose up && npm run saas && npm run agent`)
 - [ ] **Docs site at `vouch.dev`** — VitePress / Nextra with copy-paste recipes
 - [ ] OTel tracing (`src/observability/tracing.ts`)

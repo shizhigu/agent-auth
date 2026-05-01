@@ -1,0 +1,31 @@
+{
+  "name": "{{name}}",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "{{description}}",
+  "scripts": {
+    "dev": "tsx --watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "migrate": "vouch migrate up",
+    "migrate:status": "vouch migrate status",
+    "migrate:down": "vouch migrate down --steps 1"
+  },
+  "dependencies": {
+    "agent-auth": "^0.1.0",
+    "@aws-sdk/client-kms": "^3.600.0",
+    "express": "^4.19.2",
+    "ioredis": "^5.4.1",
+    "libsodium-wrappers": "0.7.15",
+    "pg": "^8.12.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.10",
+    "@types/pg": "^8.11.6",
+    "@vouch/cli": "^0.1.0",
+    "tsx": "^4.16.2",
+    "typescript": "^5.4.5"
+  }
+}

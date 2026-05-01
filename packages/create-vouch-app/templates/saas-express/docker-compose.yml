@@ -1,0 +1,29 @@
+# Local Postgres + Redis for {{name}}.
+# Run `docker compose up -d` before `npx vouch migrate up`.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: {{name}}-pg
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: {{name}}
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d {{name}}"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    container_name: {{name}}-redis
+    ports:
+      - "56379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30

@@ -1,0 +1,28 @@
+# Copy to `.env` (or `export` these in your shell). Never commit real secrets.
+
+# --- Storage (docker-compose.yml ships local Postgres + Redis) ---
+DATABASE_URL=postgres://postgres:postgres@localhost:55432/{{name}}
+REDIS_URL=redis://localhost:56379
+
+# --- Vouch internal secret — 32 random bytes, base64-encoded.
+# Generate one with:
+#   node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
+AGENT_AUTH_INTERNAL_SECRET=replace-me-32-bytes-base64-here-AAAAAAAAAAAAAA=
+
+# --- Public URL of this SaaS (used to compute OAuth redirect_uri).
+PUBLIC_BASE_URL=http://localhost:8080
+
+# --- AWS KMS (production) ---
+AWS_REGION=us-east-1
+KMS_PEPPER_ALIAS=alias/vouch-pepper
+KMS_DEVICE_ALIAS=alias/vouch-device-flow
+
+# --- GitHub App (your IdP) ---
+# Create at https://github.com/settings/apps/new and fill these in.
+GH_CLIENT_ID=
+GH_CLIENT_SECRET=
+GH_WEBHOOK_SECRET=
+GH_APP_PRIVATE_KEY=
+
+# --- App ---
+PORT=8080

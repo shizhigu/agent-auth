@@ -1,0 +1,2 @@
+# Where to find the Vouch-protected SaaS.
+SAAS_BASE_URL=http://localhost:8080

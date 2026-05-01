@@ -1,0 +1,19 @@
+{
+  "name": "{{name}}",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "{{description}}",
+  "scripts": {
+    "dev": "tsx --watch src/agent.ts",
+    "start": "tsx src/agent.ts"
+  },
+  "dependencies": {
+    "@vouch/client": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "tsx": "^4.16.2",
+    "typescript": "^5.4.5"
+  }
+}
