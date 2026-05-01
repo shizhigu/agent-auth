@@ -42,12 +42,25 @@ interface FakeKeyRow {
 class FakePg {
   rows: Map<string, FakeKeyRow> = new Map();
   callCount = 0;
+  lastUsedUpdates: string[] = [];
 
   async queryOne<R>(_text: string, params: ReadonlyArray<unknown>): Promise<R | null> {
     this.callCount++;
     const id = params[0] as string;
     const r = this.rows.get(id);
     return (r as unknown as R) ?? null;
+  }
+
+  // The validate-key cache-miss path bumps last_used_at after a
+  // successful HMAC verify. Best-effort fire-and-forget — record the
+  // calls so tests can assert when needed, but don't fail the test
+  // run on it.
+  async query(text: string, params?: ReadonlyArray<unknown>): Promise<{ rows: unknown[] }> {
+    if (text.includes('UPDATE agent_api_keys') && text.includes('last_used_at')) {
+      this.lastUsedUpdates.push((params?.[0] as string) ?? '');
+      return { rows: [] };
+    }
+    throw new Error(`FakePg.query: unexpected SQL: ${text}`);
   }
 }
 

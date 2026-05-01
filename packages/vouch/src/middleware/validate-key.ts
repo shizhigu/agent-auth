@@ -253,7 +253,21 @@ export async function validateKey(
   // Postgres during a Redis outage. RT-3 caps the staleness via TTL.
   deps.localCache.set(parsed.key_id, entry);
 
-  return validateAgainstCache(entry, parsed.secret, deps.kms, now);
+  const ctx = await validateAgainstCache(entry, parsed.secret, deps.kms, now);
+
+  // Fire-and-forget last_used_at bump on the cache-miss path. We only
+  // mark "used" AFTER the HMAC check passes so an attacker probing
+  // invalid keys can't move last_used_at. Cache-hit paths intentionally
+  // skip this — last_used_at granularity is "within the last cache
+  // TTL" (default 30 s), which is plenty for admin / forensics.
+  void deps.postgres
+    .query(
+      `UPDATE agent_api_keys SET last_used_at = now() WHERE key_id = $1`,
+      [parsed.key_id],
+    )
+    .catch(() => undefined);
+
+  return ctx;
 }
 
 async function validateAgainstCache(

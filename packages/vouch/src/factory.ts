@@ -162,6 +162,23 @@ export interface VouchInit {
   readonly audience?: string | ((provider: string) => string);
   /** Override per-provider redirect URI. Defaults to `${base_url}${mount_path}/callback`. */
   readonly redirect_uri?: string | ((provider: string) => string);
+  /**
+   * Optional defense-in-depth: only allow `redirect_uri` values that match
+   * one of these origin prefixes. The OAuth provider already enforces
+   * its own allowlist (registered redirect URIs in the GitHub / Google
+   * App config) — this is a second gate to catch misconfiguration where
+   * a SaaS team registers `*.vercel.app` previews + production in the
+   * same OAuth app. Fail-fast on construction if any computed
+   * redirect_uri doesn't match.
+   *
+   * Each entry can be:
+   *   - exact origin (`https://api.acme.com`) — matches that origin only
+   *   - origin + path prefix (`https://api.acme.com/agent-auth`) — must start with this
+   *
+   * Leave undefined to skip the check (the OAuth provider's own
+   * allowlist remains authoritative).
+   */
+  readonly redirect_uri_allowlist?: ReadonlyArray<string>;
   /** Optional logger / alert hook for webhook collisions etc. */
   readonly onAlert?: (label: string, meta: Record<string, unknown>) => void;
   // Pass-through to ResolvedConfig for power users
@@ -318,6 +335,31 @@ export async function vouch(init: VouchInit): Promise<VouchInstance> {
     );
   }
 
+  // redirect_uri allowlist — sync validation. Run before any I/O so
+  // misconfigured allowlists fail-fast on construction.
+  const eager_mount_path = normalizePath(init.mount_path ?? '/agent-auth');
+  const eager_redirect_uri = (provider: string): string => {
+    if (typeof init.redirect_uri === 'function') return init.redirect_uri(provider);
+    if (typeof init.redirect_uri === 'string') return init.redirect_uri;
+    if (init.base_url) return `${trimTrailingSlash(init.base_url)}${eager_mount_path}/callback`;
+    return `${eager_mount_path}/callback`;
+  };
+  if (init.redirect_uri_allowlist && init.redirect_uri_allowlist.length > 0) {
+    for (const provider of identity_providers) {
+      const uri = eager_redirect_uri(provider.name);
+      const matched = init.redirect_uri_allowlist.some((prefix) => {
+        const trimmed = trimTrailingSlash(prefix);
+        return uri === trimmed || uri.startsWith(trimmed + '/');
+      });
+      if (!matched) {
+        throw new Error(
+          `vouch(): redirect_uri "${uri}" for provider "${provider.name}" doesn't match any redirect_uri_allowlist entry. ` +
+            `Allowlist: ${init.redirect_uri_allowlist.join(', ')}`,
+        );
+      }
+    }
+  }
+
   // -------- Build adapters --------
   const pgConfig: PoolConfig =
     'config' in init.database ? init.database.config : { connectionString: init.database.url };
@@ -356,12 +398,16 @@ export async function vouch(init: VouchInit): Promise<VouchInstance> {
     if (typeof init.audience === 'string') return init.audience;
     return provider;
   };
-  const redirect_uri: (p: string) => string = (provider) => {
+  const redirect_uri_inner: (p: string) => string = (provider) => {
     if (typeof init.redirect_uri === 'function') return init.redirect_uri(provider);
     if (typeof init.redirect_uri === 'string') return init.redirect_uri;
     if (init.base_url) return `${trimTrailingSlash(init.base_url)}${mount_path}/callback`;
     return `${mount_path}/callback`;
   };
+  // The allowlist was already validated above (eagerly, before any I/O).
+  // Per-request lookups just use the inner function — if it passed
+  // construction, it'll match at runtime too.
+  const redirect_uri = redirect_uri_inner;
 
   // 6. Validate-key deps (used by middleware AND by protected routes inside dispatcher)
   const validateDeps = makeValidateKeyDeps(config);

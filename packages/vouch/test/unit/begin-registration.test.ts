@@ -105,6 +105,45 @@ class FakePg {
     }
     return null;
   }
+
+  // Used by registration-status: opens a "transaction" that does
+  // SELECT … FOR UPDATE, then optionally an UPDATE to transition
+  // ready -> claimed. The fake serializes everything through the
+  // map, so the FOR UPDATE semantics aren't exercised — that's
+  // covered by the integration tier.
+  async withClient<R>(fn: (client: { query: (sql: string, params?: ReadonlyArray<unknown>) => Promise<{ rows: unknown[] }> }) => Promise<R>): Promise<R> {
+    const sessions = this.sessions;
+    return fn({
+      async query(sql: string, params: ReadonlyArray<unknown> = []) {
+        const norm = sql.replace(/\s+/g, ' ').trim();
+        if (norm.startsWith('SELECT kind, account_id, status, status_message')) {
+          const row = sessions.get(params[0] as string);
+          if (!row) return { rows: [] };
+          return {
+            rows: [
+              {
+                kind: row.kind,
+                account_id: row.account_id,
+                status: row.status,
+                status_message: row.status_message,
+                result_ciphertext: row.result_ciphertext,
+                expires_at: row.expires_at,
+              },
+            ],
+          };
+        }
+        if (norm.startsWith("UPDATE agent_registration_sessions SET status = 'claimed'")) {
+          const row = sessions.get(params[0] as string);
+          if (row && row.status === 'ready') {
+            row.status = 'claimed';
+            row.result_ciphertext = null;
+          }
+          return { rows: [] };
+        }
+        return { rows: [] };
+      },
+    });
+  }
 }
 
 class StubProvider implements IdentityProvider {

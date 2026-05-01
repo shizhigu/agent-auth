@@ -38,6 +38,11 @@ class FakePg {
   async queryOne<R>(_t: string, params: ReadonlyArray<unknown>): Promise<R | null> {
     return ((this.rows.get(params[0] as string) ?? null) as unknown as R | null);
   }
+  // validate-key fires a best-effort UPDATE for last_used_at on the
+  // cache-miss path. No-op stub.
+  async query(_t: string, _params?: ReadonlyArray<unknown>): Promise<{ rows: unknown[] }> {
+    return { rows: [] };
+  }
 }
 
 async function setup(): Promise<{

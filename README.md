@@ -337,6 +337,19 @@ For revocation, rotation, recovery, and multi-region paths, see the correspondin
 
 Per the threat model (`SPEC.md` Part VI), the app role cannot tamper with audit history even if compromised — append is the only op it has.
 
+### Your responsibility (the SaaS side of the contract)
+
+Vouch handles identity attestation, key minting, sealed-box delivery, audit, revocation, and rate limiting. **Three things stay on your side**:
+
+- **Authorize the human** before calling `/begin-registration` with `intent: 'add_key'` or `intent: 'recover'`. Vouch verifies the GitHub / OIDC identity; it does NOT verify "this human is an admin/owner of the SaaS account `target_account_id`". That's your role model — wire it up:
+  ```ts
+  app.post('/agent-auth/begin-registration', requireAdmin, async (req, res) => {
+    // Vouch handler
+  });
+  ```
+- **Tenant-scope every query** by `req.agent.account_id`. Vouch enforces the bearer maps to a single account; it doesn't know your tables.
+- **Configure your OAuth provider's redirect_uri allowlist** at GitHub / Google. Optionally: pass `redirect_uri_allowlist` to `vouch()` for defense-in-depth.
+
 ## Documentation
 
 | | |
