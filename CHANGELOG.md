@@ -6,6 +6,81 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — v0.2 dev
+
+Brand identity, monorepo restructure, and DX completeness — Vouch goes from
+"a library you can self-host" to "a complete OSS app a SaaS team can adopt
+in 5 minutes."
+
+#### Brand
+- **Vouch** is now the project's public-facing brand (npm package stays
+  `agent-auth` — the OSS engine of Vouch). Built and maintained by
+  Agentic Flow LLC.
+- SVG logo (mark + wordmark + brand color `#5B6CFF`), favicon, 1200×630
+  Open Graph social card under `assets/brand/`.
+- README leads with the colored mark; docs site favicon + OG meta + theme
+  color all wired.
+
+#### High-level factory
+- **`vouch()`** factory in `packages/vouch/src/factory.ts`: flat config →
+  `VouchInstance` with adapters, lifecycle, Express helpers. Closes the
+  "60-line quick-start" criticism — a SaaS now wires up in ~15 lines.
+- `auth.lifecycle` — framework-agnostic dispatcher with deps already bound
+  to each route handler.
+- **`auth.express.mount(app)`** — handles raw-body for webhooks +
+  recover-account-confirm, JSON for the rest, single dispatcher for all
+  12 lifecycle paths.
+- **`agent-auth/hono`** entry — `honoRoutes(auth)` + `honoAppMiddleware(auth)`
+  mirror the Express adapter for Bun / Cloudflare Workers / Deno.
+
+#### Identity providers
+- **`GoogleProvider`** — Google + Google Workspace OAuth2 / OIDC. Optional
+  `hosted_domain` restriction.
+- **`OidcProvider`** — generic OpenID Connect. `issuer_url` (auto-discovery)
+  or pre-configured `endpoints`.
+- Factory exposes `identity.github`, `identity.google`, `identity.oidc`,
+  and `identity.custom: IdentityProvider[]`.
+
+#### Tooling
+- **`@vouch/client`** — agent-side SDK. `register()` / `beginRegistration()`
+  / `fromBearer()` plus a `vouch.fetch()` that auto-injects Bearer.
+- **`@vouch/cli`** — `vouch migrate up/down/status`. Transactional,
+  auto-tracked migration runner.
+- **`create-vouch-app`** — `npx create-vouch-app my-saas` scaffolder. Two
+  templates (`saas-express`, `agent`).
+
+#### Observability
+- **OpenTelemetry tracing** — opt-in via `tracing: { tracer }`. Lib never
+  imports `@opentelemetry/api`; SaaS passes its own Tracer instance.
+
+#### Examples + docs
+- **VitePress docs site** at `apps/docs/` — 11 pages, brand wired.
+- **Framework examples**: `examples/nextjs-app-router/`, `examples/sveltekit/`,
+  `examples/cloudflare-workers/`.
+
+#### Project structure
+- **Monorepo restructure** — `src/` → `packages/vouch/src/`; `demo/` →
+  `apps/demo/`; new `packages/{cli,client,create-vouch-app}` and `apps/{docs,demo}`.
+  Root `package.json` is now a workspaces manifest.
+
+#### Test totals at HEAD
+- **393 unit tests** across 54 suites (was 297 / 41 at v0.1):
+  +6 factory validation, +10 Hono routes dispatch, +15 identity-provider
+  (OIDC + Google), +6 CLI migrate runner, +7 scaffolder, +9 OTel tracing.
+- Integration (94) + chaos (14) + bench unchanged.
+
+### Changed — v0.2 dev
+
+- README rewritten as a top-tier OSS landing page: Vouch hero, comparison
+  table vs Better Auth / Auth0 / Clerk / Nango, repositioned Roadmap,
+  honest "what's not shipped yet" section.
+- Contributing policy: from "personal project, no PRs" to "roadmap-driven,
+  bug-fix PRs fast-tracked, features need issue alignment".
+- `recover-account-confirm` now correctly mounts raw-body parsing in the
+  factory (HMAC verification needs unmolested bytes).
+- `package.json` `./hono` export points at the new high-level
+  `dist/hono.js` (re-exports the older middleware).
+
 ### Added — v0.1 cut
 
 Initial implementation of the agent-auth library, delivering all 8 milestones

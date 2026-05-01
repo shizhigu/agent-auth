@@ -1,6 +1,6 @@
 {
   "name": "@vouch/cli",
-  "version": "0.0.0-dev",
+  "version": "0.2.0-dev",
   "description": "Vouch — command-line tooling. `vouch migrate up/down/status` plus `vouch dev` for the local docker stack.",
   "keywords": [
     "vouch",

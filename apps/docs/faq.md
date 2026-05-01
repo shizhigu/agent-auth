@@ -15,7 +15,7 @@ Vouch issues the agent its own first-class identity, scoped to a single tenant, 
 
 ## Is the SaaS-side library production-ready?
 
-The OSS engine is feature-complete (8 milestones, 355+ unit + 94 integration + 14 chaos tests). The spec was audited across 13 rounds with codex / GPT-5; final grade A.
+The OSS engine is feature-complete (8 milestones + the v0.2 DX completeness sweep). 393 unit tests / 54 suites + 94 integration + 14 chaos all pass at HEAD. The spec was audited across 13 rounds with codex / GPT-5; final grade A.
 
 What's NOT production-ready yet:
 - **Hosted Cloud** — self-host only at v0.1.

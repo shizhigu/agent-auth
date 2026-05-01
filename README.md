@@ -14,7 +14,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js 20+](https://img.shields.io/badge/Node.js-20%2B-brightgreen.svg)](https://nodejs.org)
 [![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Tests](https://img.shields.io/badge/tests-355%20unit%20%C2%B7%2094%20integration%20%C2%B7%2014%20chaos-success)](#testing)
+[![Tests](https://img.shields.io/badge/tests-393%20unit%20%C2%B7%2094%20integration%20%C2%B7%2014%20chaos-success)](#testing)
 
 [Status](#project-status) ·
 [Why](#why-vouch) ·
@@ -30,7 +30,7 @@
 
 ## Project status
 
-**Server-side engine: feature-complete (v0.1).** All 8 milestones shipped — `355` unit · `94` integration · `14` chaos tests passing at HEAD. Spec audited across 13 rounds with codex / GPT-5; final grade A (production-ready paying-customer level).
+**Server-side engine: feature-complete (v0.2).** All 8 milestones shipped + DX completeness sweep (factory, Hono, monorepo, CLI, scaffolder, multi-provider, docs site, OTel, brand assets) — `393` unit · `94` integration · `14` chaos tests passing at HEAD. Spec audited across 13 rounds with codex / GPT-5; final grade A (production-ready paying-customer level).
 
 **What is NOT shipped yet** — and why this matters for you:
 
@@ -356,7 +356,7 @@ Four-tier test pyramid; all four pass at HEAD.
 
 | Tier | Count | Wall | What it covers |
 |---|---|---|---|
-| **Unit** (vitest + fast-check) | 355 / 49 suites | ~600 ms | Algorithm shape, error mapping, property invariants (GCRA · audit chain · idempotency state machine · canonical hashing). |
+| **Unit** (vitest + fast-check) | 393 / 54 suites | ~1 s | Algorithm shape, error mapping, property invariants (GCRA · audit chain · idempotency state machine · canonical hashing) + factory / Hono / providers / CLI / scaffolder / OTel coverage. |
 | **Integration** (testcontainers Postgres 16 + Redis 7) | 94 / 27 suites | ~95 s | Real DB triggers, cross-region barrier, audit partition manager, RT-* threats end-to-end. |
 | **Chaos** (testcontainers + injected faults) | 14 / 5 suites | ~10 s | RT-15 DoS · RT-18/32/34 multi-region failover · RT-22 KMS unavailable · RT-25 Redis partition · RT-43 fail-closed amplification. |
 | **Bench** (vitest bench) | 2 | ~5 s | `validation_cache_hit` P99 = 3.2 µs (target 50 ms) · `validation_cache_miss + HMAC` P99 = 6.5 µs (target 100 ms). |
@@ -375,7 +375,7 @@ npm run bench
 
 The server-side engine is done; the next milestones are about **developer experience parity with Better Auth / Auth0**.
 
-### v0.2 — DX completeness (next ~4 weeks)
+### v0.2 — DX completeness (mostly shipped)
 
 - [ ] **`agent-auth` published on npm** — currently dev-only
 - [x] **`@vouch/client` dev preview** — agent-side SDK lives in [`packages/client/`](packages/client/); 5-line `register()` happy path; auto-rotation deferred to v0.3
@@ -413,7 +413,7 @@ The server-side engine is done; the next milestones are about **developer experi
 | | |
 |---|---|
 | **Version** | v0.1 (server-side complete) |
-| **DX completeness** | ~30% — see [Project status](#project-status) for the gap list |
+| **DX completeness** | ~85% — factory + monorepo + CLI + scaffolder + multi-provider + docs + OTel all shipped; npm publish + Cloud are the remaining gaps |
 | **Spec audit grade** | A (production-ready paying-customer level, per 13 rounds with codex / GPT-5) |
 | **Threats covered with tests** | 32 of 44 RT-* (11 explicitly operational, 1 reserved) |
 | **OWASP API 2023** | All 10 risks mapped — see `docs/security/OWASP-API-self-review.md` |

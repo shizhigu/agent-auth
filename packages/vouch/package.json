@@ -1,6 +1,6 @@
 {
   "name": "agent-auth",
-  "version": "0.0.0-dev",
+  "version": "0.2.0-dev",
   "description": "Vouch — identity infrastructure for AI agents. Drop-in auth rail that sits next to your existing human auth, never replaces it.",
   "keywords": [
     "ai-agents",
